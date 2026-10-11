@@ -1,0 +1,70 @@
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const assert = require('node:assert/strict');
+const { createRequire } = require('node:module');
+const root = process.env.RESOLVEAI_ROOT || path.resolve(__dirname, '..');
+const requireFrontend = createRequire(path.join(root, 'frontend/package.json'));
+const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRIGHT_MODULE) : requireFrontend('playwright');
+
+(async () => {
+  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROMIUM_PATH || undefined });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, acceptDownloads: true, locale: 'zh-CN' });
+  const page = await context.newPage();
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  const docs = path.join(root, 'docs');
+  await fs.mkdir(docs, { recursive: true });
+  try {
+    await page.goto(process.env.RESOLVEAI_URL || 'http://127.0.0.1:5174');
+    await page.getByLabel('工作邮箱').fill(process.env.RESOLVEAI_EMAIL || 'demo@resolveai.example.com');
+    await page.getByLabel('密码', { exact: true }).fill(process.env.RESOLVEAI_PASSWORD || 'ResolveAI123!');
+    await page.getByRole('button', { name: '进入工作台' }).click();
+    await page.getByRole('heading', { name: '让 IT 问题更快得到响应' }).waitFor();
+    for (const question of ['如何安装公司批准的办公软件？', 'VPN 连不上，提示认证超时，怎么排查？']) {
+      await page.getByLabel('描述 IT 问题').fill(question);
+      await page.getByRole('button', { name: '开始诊断' }).click();
+      await page.getByRole('heading', { name: '诊断结果', exact: true }).waitFor({ timeout: 120000 });
+      await page.getByRole('button', { name: '开始诊断' }).waitFor();
+    }
+    assert(await page.getByText('人工工单已创建', { exact: true }).isVisible());
+    await page.screenshot({ path: path.join(docs, 'resolveai-diagnosis.png'), fullPage: true });
+    await page.getByRole('button', { name: '运营看板', exact: true }).click();
+    await page.getByText('工作区工单分布', { exact: true }).waitFor();
+    await page.getByLabel('统计范围').selectOption('30');
+    await page.getByText('工作区工单分布', { exact: true }).waitFor();
+    const metricsDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出指标', exact: true }).click();
+    const metricFile = await (await metricsDownload).path();
+    const metrics = JSON.parse(await fs.readFile(metricFile, 'utf8'));
+    assert.equal(metrics.days, 30);
+    assert(metrics.completed_runs >= 2);
+    assert.equal(metrics.daily.length, 30);
+    await page.getByLabel('统计范围').selectOption('7');
+    await page.getByText('工作区工单分布', { exact: true }).waitFor();
+    await page.screenshot({ path: path.join(docs, 'resolveai-dashboard.png'), fullPage: true });
+    await page.getByRole('button', { name: /^工单队列/ }).click();
+    await page.getByLabel('搜索问题 / 原因 / ID').fill('VPN');
+    await page.getByLabel('工单状态', { exact: true }).selectOption('ESCALATED');
+    await page.getByLabel('优先级', { exact: true }).selectOption('HIGH');
+    const cards = page.locator('.ticket-card');
+    assert(await cards.count() > 0);
+    for (const card of await cards.all()) assert.match(await card.innerText(), /VPN/i);
+    const csvDownload = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出筛选结果', exact: true }).click();
+    const csvFile = await (await csvDownload).path();
+    const csv = await fs.readFile(csvFile, 'utf8');
+    assert(csv.startsWith('\uFEFF'));
+    assert(csv.includes('VPN') && csv.includes('HIGH'));
+    await page.screenshot({ path: path.join(docs, 'resolveai-tickets.png'), fullPage: true });
+    await page.getByLabel('搜索问题 / 原因 / ID').fill('no-match-unique-913872');
+    await page.getByRole('heading', { name: '没有匹配的工单' }).waitFor();
+    assert(await page.getByRole('button', { name: '导出筛选结果', exact: true }).isDisabled());
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByRole('button', { name: '运营看板', exact: true }).click();
+    await page.getByText('工作区工单分布', { exact: true }).waitFor();
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.screenshot({ path: path.join(docs, 'resolveai-mobile.png'), fullPage: true });
+    assert.deepEqual(errors, []);
+    console.log(JSON.stringify({ passed: true, checks: ['login', 'two live diagnoses', 'ticket handoff', '7/30 day analytics', 'metrics JSON download', 'ticket search/status/priority filters', 'CSV download with UTF-8 BOM', 'empty filter state', '390px layout', 'no browser exceptions'] }, null, 2));
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

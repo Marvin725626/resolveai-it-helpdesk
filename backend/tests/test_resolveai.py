@@ -141,3 +141,43 @@ def test_tool_allowlist_rejects_identity_override():
     from app.helpdesk.tools import execute_tools
     with pytest.raises(ValueError):
         asyncio.run(execute_tools(None, None, "account", [{"name": "get_account_status", "arguments": {"employee": "another-user"}}]))
+
+
+def test_analytics_counts_completed_and_enforces_scope(client, auth):
+    before = client.get("/api/v1/helpdesk/analytics?days=7", headers=auth).json()
+    diagnose(client, auth, "如何安装公司批准的办公软件？")
+    diagnose(client, auth, "VPN 认证超时请人工处理")
+    response = client.get("/api/v1/helpdesk/analytics?days=7", headers=auth)
+    assert response.status_code == 200
+    after = response.json()
+    assert after["total_runs"] == before["total_runs"] + 2
+    assert after["completed_runs"] == before["completed_runs"] + 2
+    assert after["escalated_runs"] == before["escalated_runs"] + 1
+    assert after["escalation_rate"] == round(after["escalated_runs"] / after["completed_runs"], 4)
+    assert sum(day["runs"] for day in after["daily"]) == after["total_runs"]
+    assert len(after["daily"]) == 7
+    assert after["scope"]["runs"] == "current_user"
+    assert client.get("/api/v1/helpdesk/analytics").status_code == 401
+    for invalid in (0, 91):
+        assert client.get(f"/api/v1/helpdesk/analytics?days={invalid}", headers=auth).status_code == 422
+    response = client.post("/api/v1/auth/register", json={"email": "metrics@resolveai.example.com", "password": "OtherTenant123!", "full_name": "Metrics owner", "tenant_name": "Metrics", "tenant_slug": "metrics-" + uuid4().hex})
+    assert response.status_code == 201
+    other = {"Authorization": "Bearer " + response.json()["access_token"]}
+    empty = client.get("/api/v1/helpdesk/analytics", headers=other).json()
+    assert empty["total_runs"] == 0 and empty["ticket_statuses"] == {}
+    assert empty["escalation_rate"] is None and empty["avg_latency_ms"] is None
+
+
+def test_analytics_timezone_percentile_and_noncompleted_denominator():
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from app.helpdesk.analytics import summarize_runs
+    now = datetime(2026, 10, 12, 17, tzinfo=timezone.utc)
+    rows = [SimpleNamespace(created_at=now, result={"status": "completed", "category": "software", "supported": True, "escalate": False, "latency_ms": value}) for value in range(1, 21)]
+    rows += [SimpleNamespace(created_at=now.replace(tzinfo=None), result={"status": "failed"})]
+    summary = summarize_runs(rows, 7, now)
+    assert summary["daily"][-1]["date"] == "2026-10-13"
+    assert summary["daily"][-1]["runs"] == 21
+    assert summary["completed_runs"] == 20 and summary["supported_rate"] == 1
+    assert summary["avg_latency_ms"] == 10.5 and summary["p95_latency_ms"] == 19
+    assert summary["statuses"]["failed"] == 1

@@ -1,6 +1,33 @@
 # ResolveAI · 企业 IT HelpDesk Agent
 
-基于 [AI SupportPro](https://github.com/theclevertrader/ai-supportpro) 的 IT 支持场景改造，保留原始 MIT 许可证和版权。来源提交与改动范围见 [NOTICE.md](NOTICE.md) 和 [UPSTREAM.json](UPSTREAM.json)，原项目说明见 [README.upstream.md](README.upstream.md)。这是可运行的本地开发 MVP。
+基于 [AI SupportPro](https://github.com/theclevertrader/ai-supportpro) 的 IT 支持场景改造，保留原始 MIT 许可证和版权。来源提交与改动范围见 [NOTICE.md](NOTICE.md) 和 [UPSTREAM.json](UPSTREAM.json)，原项目说明见 [README.upstream.md](README.upstream.md)。这是可运行的本地开发 MVP，覆盖证据诊断、人工交接与运营观测。
+
+[![CI](https://github.com/Marvin725626/resolveai-it-helpdesk/actions/workflows/ci.yml/badge.svg)](https://github.com/Marvin725626/resolveai-it-helpdesk/actions/workflows/ci.yml)
+
+**FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
+
+[三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+
+### 运营看板实机截图
+
+![ResolveAI 运营看板：每日诊断、分类、转人工与工单分布](docs/resolveai-dashboard.png)
+
+截图来自本地离线演示的实际运行。指标是演示账号的诊断记录，不代表生产业务效果或真实模型响应耗时。
+
+### 工作流程
+
+```mermaid
+flowchart LR
+    Q[用户问题] --> R[分类与混合检索]
+    R --> E{证据检查}
+    E -->|不足且未达上限| R
+    E --> T[只读工具诊断]
+    T --> A[附来源的回答]
+    A -->|需要人工| H[带上下文的工单]
+    A --> D[保存运行与轨迹]
+    H --> D
+    D --> M[运营看板与导出]
+```
 
 ## 已实现
 
@@ -11,7 +38,9 @@
 - 工单附带问题、SOP 证据、工具输出和诊断；支持接手、解决、关闭与重新处理。
 - 请求 ID 防重复工单、租户 / 用户隔离、凭据文本脱敏、图执行上限和模型超时。
 - 工作台时间按 Asia/Hong_Kong 显示；API 输出明确的 UTC 时间戳。
-- 13 项隔离回归测试，6 个标注场景的本地评估脚本。
+- 运营看板：最近 7 / 30 / 90 天诊断趋势、转人工率、证据通过率、平均 / P95 耗时、问题分类与工单状态分布；支持指标 JSON 导出。
+- 工单搜索、状态 / 优先级筛选与 CSV 导出；CSV 处理中文、引号与公式前缀。
+- 15 项后端隔离回归测试、CSV 格式验证、可复用浏览器演示脚本，以及 6 个标注场景的本地评估脚本。
 
 ## 本机启动
 
@@ -87,12 +116,19 @@ docker compose -f compose.resolveai.yml up --build -d
 cd backend
 ..\.venv\Scripts\python.exe -m pytest tests/test_resolveai.py -q
 cd ..\frontend
+npm run test:csv
 npm run build
 cd ..
 .\.venv\Scripts\python.exe scripts\evaluate.py
 ```
 
 回归测试使用临时数据库，不修改演示数据库。评估会在演示库中生成运行记录及对应工单，结果写入 `docs/evaluation.local.json`。指标包括 Recall@4、MRR、升级决策正确率和延迟。六个小样本不能支持真实业务准确率；引用格式检查也不等于 Faithfulness 评估。具体限制见 [架构说明](docs/ARCHITECTURE.resolveai.md)。
+
+## 展示与统计口径
+
+看板诊断指标统计当前账号；工单状态统计当前工作区的全部工单。日期按香港时间划分，转人工率与证据通过率以完成诊断为分母，无样本时显示 `—`。证据通过率不是正确率；P95 使用最近秩法。
+
+工单列表、搜索及 CSV 导出覆盖最近 100 张工作区工单，导出仅包含列表摘要。详细边界与演示步骤见 [DEMO.md](docs/DEMO.md)。GitHub 提供源码和截图；运行工作台需要启动本地服务。
 
 ## 示例
 

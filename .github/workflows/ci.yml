@@ -51,6 +51,10 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
+      - name: Verify CSV export formatting and formula handling
+        working-directory: ./frontend
+        run: npm run test:csv
+
       - name: TypeScript Typecheck
         working-directory: ./frontend
         run: npx tsc --noEmit

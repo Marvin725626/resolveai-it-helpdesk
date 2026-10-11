@@ -29,3 +29,10 @@ flowchart LR
 This is a local development MVP. It does not reset accounts, grant permissions, execute shell commands, restart services, connect to real enterprise identity systems, or claim production readiness. Evidence gating checks keyword overlap and citations; it is not a semantic faithfulness proof. Model answers can still be incorrect. Evaluation uses six tiny manually labelled fixtures, not a representative dataset.
 
 The graph has no durable LangGraph checkpointer; durable final run records use SQLAlchemy. Process termination after reserving a run can leave its status at `running`; submit with a new request ID after fixing the failure. Database bootstrap uses inherited `create_all`; schema changes need planned migrations before shared deployment. PostgreSQL integration requires a live pgvector database and separate validation.
+
+
+## Operational observation (2026-10-12)
+
+`GET /helpdesk/analytics?days=7` requires the authenticated support role. It queries only the current tenant/user's persisted runs in a 1–90 day Hong Kong calendar window, excludes future records, then computes daily counts, categories, completion-based rates and nearest-rank P95. Ticket statuses are grouped in SQL for the current tenant across all time. No questions, descriptions or tool payloads are returned in the metric response.
+
+`AnalyticsPanel.tsx` offers 7/30/90-day presets, data tables and metric JSON export. Ticket keyword/status/priority filters operate on the existing latest-100 list; `csv.ts` exports only summary columns and handles spreadsheet formula prefixes. Larger volumes need server-side pagination and grouped metric queries; this implementation targets the documented local MVP scale.

@@ -2,10 +2,10 @@ import asyncio
 import json
 import time
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -199,3 +199,22 @@ async def update_ticket(ticket_id: UUID, data: TicketUpdate, user: User = Depend
     ticket.resolved_at = datetime.now(timezone.utc) if data.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED) else None
     await db.commit()
     return {"id": ticket.id, "status": ticket.status.value}
+
+
+@router.get("/analytics")
+async def analytics(days: int = Query(default=7, ge=1, le=90), user: User = Depends(get_current_user), db=Depends(get_db)):
+    from app.helpdesk.analytics import DISPLAY_ZONE, summarize_runs
+    operator(user)
+    now = datetime.now(timezone.utc)
+    first_day = now.astimezone(DISPLAY_ZONE).date() - timedelta(days=days - 1)
+    start = datetime.combine(first_day, datetime.min.time(), tzinfo=DISPLAY_ZONE).astimezone(timezone.utc)
+    rows = (await db.scalars(select(HelpdeskRun).where(
+        HelpdeskRun.tenant_id == user.tenant_id, HelpdeskRun.user_id == user.id,
+        HelpdeskRun.created_at >= start, HelpdeskRun.created_at <= now))).all()
+    summary = summarize_runs(rows, days, now)
+    counts = (await db.execute(select(Ticket.status, func.count(Ticket.id)).where(
+        Ticket.tenant_id == user.tenant_id).group_by(Ticket.status))).all()
+    summary["ticket_statuses"] = {status.value: count for status, count in counts}
+    summary["scope"] = {"runs": "current_user", "tickets": "current_workspace_all_time"}
+    summary["generated_at"] = now
+    return summary
