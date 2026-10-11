@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.helpdesk.retrieval import retrieve, tokenize
+from app.helpdesk.ticket_ops import record_event
 from app.helpdesk.tools import execute_tools, select_tools
 from app.models.customer import Customer
 from app.models.ticket import Ticket, TicketCategory, TicketPriority, TicketStatus
@@ -144,6 +145,7 @@ def build_workflow(db, user):
                       category=TicketCategory.TECHNICAL, escalation_reason=state["reason"][:255])
         db.add(item)
         await db.flush()
+        record_event(db, item, user, "created", {"origin": "langgraph", "reason": state["reason"][:255]})
         return {"ticket_id": item.id}
 
     async def finish(state):

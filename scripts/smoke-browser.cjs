@@ -25,6 +25,8 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
       await page.getByRole('button', { name: '开始诊断' }).click();
       await page.getByRole('heading', { name: '诊断结果', exact: true }).waitFor({ timeout: 120000 });
       await page.getByRole('button', { name: '开始诊断' }).waitFor();
+      await page.getByRole('button', { name: '有帮助', exact: true }).click();
+      await page.getByText('反馈已保存，可修改选择', { exact: true }).waitFor();
     }
     assert(await page.getByText('人工工单已创建', { exact: true }).isVisible());
     await page.screenshot({ path: path.join(docs, 'resolveai-diagnosis.png'), fullPage: true });
@@ -39,6 +41,7 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
     assert.equal(metrics.days, 30);
     assert(metrics.completed_runs >= 2);
     assert.equal(metrics.daily.length, 30);
+    assert(metrics.feedback.helpful >= 2);
     await page.getByLabel('统计范围').selectOption('7');
     await page.getByText('工作区工单分布', { exact: true }).waitFor();
     await page.screenshot({ path: path.join(docs, 'resolveai-dashboard.png'), fullPage: true });
@@ -55,7 +58,47 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
     const csv = await fs.readFile(csvFile, 'utf8');
     assert(csv.startsWith('\uFEFF'));
     assert(csv.includes('VPN') && csv.includes('HIGH'));
-    await page.screenshot({ path: path.join(docs, 'resolveai-tickets.png'), fullPage: true });
+    await page.screenshot({ path: path.join(docs, 'resolveai-tickets.png'), fullPage: false });
+    const latestId = (await cards.first().locator('.source-code').innerText()).replace('#', '');
+    await page.getByLabel('工单状态', { exact: true }).selectOption('ALL');
+    await page.getByLabel('搜索问题 / 原因 / ID').fill(latestId);
+    await page.getByLabel('处理时限', { exact: true }).selectOption('on_track');
+    assert.equal(await cards.count(), 1);
+    await cards.first().getByRole('button', { name: '接手处理', exact: true }).click();
+    await cards.first().getByRole('button', { name: '标记解决', exact: true }).waitFor();
+    assert.match(await cards.first().locator('.ticket-owner').innerText(), /演示支持工程师/);
+    await cards.first().locator('.ticket-ops > summary').click();
+    const firstNote = '演示处理：已查看模拟服务降级状态，并将知识来源与诊断信息交接给人工支持。';
+    await cards.first().getByLabel('新增内部处理备注').fill(firstNote);
+    await cards.first().getByRole('button', { name: '保存备注', exact: true }).click();
+    await cards.first().getByText(firstNote, { exact: true }).waitFor();
+    await cards.first().getByRole('button', { name: '等待员工反馈', exact: true }).click();
+    await cards.first().getByRole('button', { name: '继续处理', exact: true }).waitFor();
+    await cards.first().getByRole('button', { name: '继续处理', exact: true }).click();
+    await cards.first().getByRole('button', { name: '标记解决', exact: true }).waitFor();
+    const secondNote = '演示处理：已记录排查建议，本工单以本地流程验证目的标记解决，未操作真实企业系统。';
+    await cards.first().getByLabel('新增内部处理备注').fill(secondNote);
+    await cards.first().getByRole('button', { name: '保存备注', exact: true }).click();
+    await cards.first().getByText(secondNote, { exact: true }).waitFor();
+    await cards.first().getByRole('button', { name: '标记解决', exact: true }).click();
+    // Completed tickets leave the active target-time filter.
+    await page.getByLabel('处理时限', { exact: true }).selectOption('ALL');
+    await cards.first().getByRole('button', { name: '关闭工单', exact: true }).waitFor();
+    await cards.first().getByRole('button', { name: '关闭工单', exact: true }).click();
+    await cards.first().locator('.ticket-actions').getByText('已关闭', { exact: true }).waitFor();
+    if (await cards.first().locator('.ticket-ops').getAttribute('open') === null) await cards.first().locator('.ticket-ops > summary').click();
+    await cards.first().getByText(secondNote, { exact: true }).waitFor();
+    assert(await cards.first().locator('.ticket-timeline li').count() >= 9);
+    assert.match(await cards.first().locator('.sla-badge').innerText(), /按时完成/);
+    await page.screenshot({ path: path.join(docs, 'resolveai-ticket-timeline.png'), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.screenshot({ path: path.join(docs, 'resolveai-ticket-mobile.png'), fullPage: true });
+    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.getByRole('button', { name: '运营看板', exact: true }).click();
+    await page.getByText('工作区工单分布', { exact: true }).waitFor();
+    await page.screenshot({ path: path.join(docs, 'resolveai-dashboard.png'), fullPage: true });
+    await page.getByRole('button', { name: /^工单队列/ }).click();
     await page.getByLabel('搜索问题 / 原因 / ID').fill('no-match-unique-913872');
     await page.getByRole('heading', { name: '没有匹配的工单' }).waitFor();
     assert(await page.getByRole('button', { name: '导出筛选结果', exact: true }).isDisabled());
@@ -65,6 +108,6 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await page.screenshot({ path: path.join(docs, 'resolveai-mobile.png'), fullPage: true });
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ passed: true, checks: ['login', 'two live diagnoses', 'ticket handoff', '7/30 day analytics', 'metrics JSON download', 'ticket search/status/priority filters', 'CSV download with UTF-8 BOM', 'empty filter state', '390px layout', 'no browser exceptions'] }, null, 2));
+    console.log(JSON.stringify({ passed: true, checks: ['login', 'two live diagnoses', 'ticket handoff', 'persistent diagnosis feedback', 'self-claim and assignee', 'internal notes and timeline', 'waiting/resume/resolve/close workflow', 'demo target-time filtering', 'mobile ticket details', '7/30 day analytics', 'metrics JSON download', 'ticket search/status/priority filters', 'CSV download with UTF-8 BOM', 'empty filter state', '390px layout', 'no browser exceptions'] }, null, 2));
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

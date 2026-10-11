@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, ForeignKey, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 
 from app.core.config import settings
 from app.core.database import Base
@@ -30,4 +30,18 @@ class HelpdeskRun(Base):
     user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
     question = Column(Text, nullable=False)
     result = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class HelpdeskTicketEvent(Base):
+    """Append-only through Helpdesk APIs; not a tamper-proof compliance log."""
+    __tablename__ = "resolveai_ticket_events"
+    sequence = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(String(36), nullable=False, unique=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    ticket_id = Column(String(36), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id = Column(String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    author_name = Column(String(100), nullable=False)
+    event_type = Column(String(32), nullable=False)
+    payload = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

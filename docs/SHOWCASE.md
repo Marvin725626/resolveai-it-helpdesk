@@ -22,6 +22,14 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 
 组合关键词、状态、优先级过滤最近 100 张工单。CSV 下载当前筛选结果，包括 ID、问题、状态、优先级、升级原因和 UTC 创建时间；不导出完整上下文。中文 BOM、双引号转义与公式前缀处理经过独立校验。
 
+## 真实处理时间线与协作
+
+![工单接手、处理备注和状态历史](resolveai-ticket-timeline.png)
+
+浏览器实际完成接手、两条内部备注、等待反馈、继续处理、解决和关闭。事件由后端记录，接手人来自 JWT，关闭保留解决时间。无效状态、抢占其他人的工单、过期页面覆盖和跨工作区操作会被拒绝。
+
+同时支持“有帮助 / 仍需帮助”诊断反馈，保存后可回看，运营看板显示真实反馈数量。详细 API、状态机与时限策略见 [工单流程](TICKET_WORKFLOW.md)。
+
 ## 手机布局
 
 <img src="resolveai-mobile.png" alt="390px 手机运营看板" width="390" />
@@ -37,6 +45,8 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 | API 鉴权、窗口查询与工单范围 | `backend/app/helpdesk/api.py` |
 | 指标分母、日期桶与 P95 | `backend/app/helpdesk/analytics.py` |
 | 运营看板 | `frontend/src/AnalyticsPanel.tsx` |
+| 接手、状态机、原子更新与时限 | `backend/app/helpdesk/ticket_ops.py` |
+| 工单详情与处理时间线 | `frontend/src/TicketOps.tsx` |
 | 工单工作台与筛选 | `frontend/src/ResolveApp.tsx` |
 | CSV 格式与公式前缀 | `frontend/src/csv.ts` |
 

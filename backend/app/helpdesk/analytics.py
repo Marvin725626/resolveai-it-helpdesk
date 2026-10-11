@@ -14,6 +14,7 @@ def summarize_runs(rows, days, now):
     statuses = Counter()
     latencies = []
     completed = escalated = supported = 0
+    feedback_helpful = feedback_unhelpful = 0
     for row in rows:
         result = row.result or {}
         status = result.get("status", "unknown")
@@ -27,6 +28,12 @@ def summarize_runs(rows, days, now):
         if status != "completed":
             continue
         completed += 1
+        feedback = result.get("feedback")
+        if isinstance(feedback, dict):
+            if feedback.get("helpful") is True:
+                feedback_helpful += 1
+            elif feedback.get("helpful") is False:
+                feedback_unhelpful += 1
         categories[result.get("category", "unknown")] += 1
         if result.get("escalate"):
             escalated += 1
@@ -38,6 +45,8 @@ def summarize_runs(rows, days, now):
             latencies.append(latency)
     latencies.sort()
     return {
+        "feedback": {"helpful": feedback_helpful, "unhelpful": feedback_unhelpful,
+                     "responses": feedback_helpful + feedback_unhelpful},
         "days": days, "timezone": "Asia/Hong_Kong", "total_runs": len(rows),
         "completed_runs": completed, "escalated_runs": escalated,
         "escalation_rate": round(escalated / completed, 4) if completed else None,

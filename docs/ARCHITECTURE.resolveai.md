@@ -36,3 +36,14 @@ The graph has no durable LangGraph checkpointer; durable final run records use S
 `GET /helpdesk/analytics?days=7` requires the authenticated support role. It queries only the current tenant/user's persisted runs in a 1–90 day Hong Kong calendar window, excludes future records, then computes daily counts, categories, completion-based rates and nearest-rank P95. Ticket statuses are grouped in SQL for the current tenant across all time. No questions, descriptions or tool payloads are returned in the metric response.
 
 `AnalyticsPanel.tsx` offers 7/30/90-day presets, data tables and metric JSON export. Ticket keyword/status/priority filters operate on the existing latest-100 list; `csv.ts` exports only summary columns and handles spreadsheet formula prefixes. Larger volumes need server-side pagination and grouped metric queries; this implementation targets the documented local MVP scale.
+
+
+## Ticket collaboration and feedback (v1.1.0)
+
+`ticket_ops.py` centralizes ticket ownership, legal status transitions, conditional SQL updates and demo resolution targets. `HelpdeskTicketEvent` is a separate table: integer primary sequence establishes ordering, a unique UUID gives note-request deduplication, and tenant/ticket/author bind every operation to actual identity. State changes and their events commit together. Inherited ticket writes are blocked for Helpdesk-created tickets so they cannot bypass this workflow.
+
+`TicketOps.tsx` loads detail only when expanded, displays persisted author/time information and submits internal notes with a retained request UUID across retry. Queue badges and CSV use API-calculated target times. Close preserves resolution time; reopen clears the current completion time but retains the original target.
+
+Run feedback is a current-user-only update to a completed run's JSON result. It preserves evidence/trace and stores the latest helpful/unhelpful response. Analytics reports actual response counts separately from evidence-gate rates; it does not infer satisfaction from lack of escalation.
+
+For shared deployment, add versioned database migrations, supported concurrency testing against PostgreSQL and operational retention controls. Current app events can still be changed by database administrators and are not a compliance-grade immutable log.

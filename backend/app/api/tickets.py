@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.helpdesk.models import HelpdeskRun, HelpdeskTicketEvent
 from app.core.sanitizer import sanitize_text_input
 from app.models.tenant import Tenant
 from app.models.user import User, UserRole
@@ -21,6 +22,17 @@ from app.api.deps import get_current_tenant, get_current_user
 from app.services.audit.logger import record_audit_log
 
 router = APIRouter(prefix="/tickets", tags=["Ticketing System"])
+
+
+async def require_legacy_ticket(db, ticket):
+    """Helpdesk tickets must use the tracked workflow rather than legacy writes."""
+    run = await db.scalar(select(HelpdeskRun.id).where(HelpdeskRun.tenant_id == ticket.tenant_id,
+        HelpdeskRun.result["ticket_id"].as_string() == ticket.id).limit(1))
+    event = await db.scalar(select(HelpdeskTicketEvent.id).where(HelpdeskTicketEvent.tenant_id == ticket.tenant_id,
+        HelpdeskTicketEvent.ticket_id == ticket.id).limit(1))
+    if run or event:
+        raise HTTPException(409, "ResolveAI 工单请使用 /helpdesk/tickets 工作流，避免绕过接手权限与处理记录")
+
 
 
 @router.get("", response_model=List[TicketResponse])
@@ -196,6 +208,8 @@ async def update_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found.")
 
+    await require_legacy_ticket(db, ticket)
+
     if data.subject is not None:
         ticket.subject = sanitize_text_input(data.subject, 200)
     if data.description is not None:
@@ -240,6 +254,8 @@ async def add_ticket_note(
     ticket = result.scalar_one_or_none()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found.")
+
+    await require_legacy_ticket(db, ticket)
 
     safe_note = sanitize_text_input(data.note, 5000)
 

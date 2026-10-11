@@ -181,3 +181,133 @@ def test_analytics_timezone_percentile_and_noncompleted_denominator():
     assert summary["completed_runs"] == 20 and summary["supported_rate"] == 1
     assert summary["avg_latency_ms"] == 10.5 and summary["p95_latency_ms"] == 19
     assert summary["statuses"]["failed"] == 1
+
+
+def test_ticket_claim_timeline_and_idempotency(client, auth):
+    run = diagnose(client, auth, "VPN 认证超时需要人工支持")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    initial = client.get(path, headers=auth).json()
+    assert initial["ticket"]["assigned_agent_id"] is None
+    assert initial["events"][0]["type"] == "created"
+    assert initial["ticket"]["sla"]["target_hours"] == 4
+    assert client.post(path + "/claim", headers=auth, json={"expected_updated_at": initial["ticket"]["updated_at"]}).status_code == 200
+    assigned = client.get(path, headers=auth).json()
+    assert assigned["ticket"]["assigned_agent_name"] == "演示支持工程师"
+    assert assigned["ticket"]["status"] == "IN_PROGRESS"
+    assert [event["type"] for event in assigned["events"]] == ["created", "assigned", "status_changed"]
+    assert client.post(path + "/claim", headers=auth, json={}).status_code == 200
+    assert client.get(path, headers=auth).json()["event_count"] == 3
+
+
+def test_ticket_note_idempotency_redaction_and_validation(client, auth):
+    run = diagnose(client, auth, "VPN 故障请转人工")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    data = {"request_id": str(uuid4()), "note": "检查客户端日志：password=private-example-123，需要用户提供错误截图。"}
+    first = client.post(path + "/notes", headers=auth, json=data)
+    assert first.status_code == 201 and not first.json()["cached"]
+    assert client.post(path + "/notes", headers=auth, json=data).json()["cached"]
+    detail = client.get(path, headers=auth).json()
+    notes = [event for event in detail["events"] if event["type"] == "note"]
+    assert len(notes) == 1 and notes[0]["author"] == "演示支持工程师"
+    assert "private-example-123" not in __import__('json').dumps(detail)
+    assert client.post(path + "/notes", headers=auth, json={**data, "note": "不同的处理备注"}).status_code == 409
+    assert client.post(path + "/notes", headers=auth, json={"request_id": str(uuid4()), "note": "  "}).status_code == 422
+
+
+def test_ticket_revision_conflict_and_resolution_timestamp(client, auth):
+    run = diagnose(client, auth, "VPN 故障请支持工程师处理")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    stamp = client.get(path, headers=auth).json()["ticket"]["updated_at"]
+    assert client.post(path + "/claim", headers=auth, json={"expected_updated_at": stamp}).status_code == 200
+    assert client.patch(path, headers=auth, json={"status": "RESOLVED", "expected_updated_at": stamp}).status_code == 409
+    for status in ["WAITING_FOR_CUSTOMER", "IN_PROGRESS", "RESOLVED"]:
+        assert client.patch(path, headers=auth, json={"status": status}).status_code == 200
+    resolved = client.get(path, headers=auth).json()
+    assert client.patch(path, headers=auth, json={"status": "CLOSED"}).status_code == 200
+    closed = client.get(path, headers=auth).json()
+    assert closed["ticket"]["resolved_at"] == resolved["ticket"]["resolved_at"]
+    assert closed["ticket"]["sla"]["state"] == "met"
+    before = closed["event_count"]
+    assert client.patch(path, headers=auth, json={"status": "CLOSED"}).status_code == 200
+    assert client.get(path, headers=auth).json()["event_count"] == before
+    assert client.patch(path, headers=auth, json={"status": "IN_PROGRESS"}).status_code == 200
+    assert client.get(path, headers=auth).json()["ticket"]["resolved_at"] is None
+
+
+def test_ticket_detail_notes_claim_are_workspace_isolated(client, auth):
+    run = diagnose(client, auth, "VPN 认证故障需要支持")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    response = client.post("/api/v1/auth/register", json={"email": "events@resolveai.example.com", "password": "OtherTenant123!", "full_name": "Other event owner", "tenant_name": "Events", "tenant_slug": "events-" + uuid4().hex})
+    assert response.status_code == 201
+    other = {"Authorization": "Bearer " + response.json()["access_token"]}
+    assert client.get(path, headers=other).status_code == 404
+    assert client.post(path + "/claim", headers=other, json={}).status_code == 404
+    assert client.post(path + "/notes", headers=other, json={"request_id": str(uuid4()), "note": "跨工作区写入"}).status_code == 404
+    assert client.get(path).status_code == 401
+
+
+def test_sla_utc_deadline_boundaries_and_late_completion():
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+    from app.helpdesk.ticket_ops import sla_snapshot
+    from app.models.ticket import TicketPriority, TicketStatus
+    created = datetime(2026, 10, 12, 0)  # SQLite's timezone-naive value is UTC.
+    item = SimpleNamespace(created_at=created, priority=TicketPriority.HIGH, status=TicketStatus.IN_PROGRESS, resolved_at=None)
+    due = created.replace(tzinfo=timezone.utc) + timedelta(hours=4)
+    assert sla_snapshot(item, due - timedelta(hours=2))["state"] == "on_track"
+    assert sla_snapshot(item, due - timedelta(minutes=30))["state"] == "due_soon"
+    assert sla_snapshot(item, due)["state"] == "overdue"
+    item.status = TicketStatus.RESOLVED
+    item.resolved_at = due
+    assert sla_snapshot(item, due + timedelta(days=1))["state"] == "met"
+    item.resolved_at = due + timedelta(seconds=1)
+    assert sla_snapshot(item)["state"] == "breached"
+    item.resolved_at = None
+    assert sla_snapshot(item)["state"] == "completed_unknown"
+
+
+def test_feedback_is_persistent_revisable_and_scoped(client, auth):
+    run = diagnose(client, auth, "如何安装公司批准的办公软件？")
+    path = "/api/v1/helpdesk/runs/" + run["run_id"] + "/feedback"
+    first = client.post(path, headers=auth, json={"helpful": True})
+    assert first.status_code == 200
+    assert client.post(path, headers=auth, json={"helpful": True}).json() == first.json()
+    assert client.post(path, headers=auth, json={"helpful": False}).json()["helpful"] is False
+    history = client.get("/api/v1/helpdesk/runs", headers=auth).json()
+    recorded = next(row for row in history if row["id"] == run["run_id"])
+    assert recorded["result"]["feedback"]["helpful"] is False
+    assert recorded["result"]["trace"] == run["trace"]
+    metrics = client.get("/api/v1/helpdesk/analytics", headers=auth).json()
+    assert metrics["feedback"] == {"helpful": 0, "unhelpful": 1, "responses": 1}
+    response = client.post("/api/v1/auth/register", json={"email": "feedback@resolveai.example.com", "password": "OtherTenant123!", "full_name": "Other feedback owner", "tenant_name": "Feedback", "tenant_slug": "feedback-" + uuid4().hex})
+    other = {"Authorization": "Bearer " + response.json()["access_token"]}
+    assert client.post(path, headers=other, json={"helpful": True}).status_code == 404
+    assert client.post(path, json={"helpful": True}).status_code == 401
+
+
+def test_support_agent_cannot_take_or_change_another_agents_ticket(client, auth):
+    from app.core.database import AsyncSessionLocal
+    from app.core.security import get_password_hash
+    from app.models.user import User, UserRole
+    owner = client.get("/api/v1/auth/me", headers=auth).json()
+    async def create_agent():
+        async with AsyncSessionLocal() as db:
+            db.add(User(tenant_id=owner["tenant_id"], email="colleague@resolveai.example.com", full_name="测试支持同事",
+                        hashed_password=get_password_hash("Colleague123!"), role=UserRole.SUPPORT_AGENT))
+            await db.commit()
+    client.portal.call(create_agent)
+    login = client.post("/api/v1/auth/login", json={"email": "colleague@resolveai.example.com", "password": "Colleague123!"})
+    assert login.status_code == 200
+    colleague = {"Authorization": "Bearer " + login.json()["access_token"]}
+    run = diagnose(client, auth, "VPN 认证超时需要接手")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    assert client.post(path + "/claim", headers=auth, json={}).status_code == 200
+    assert client.post(path + "/claim", headers=colleague, json={}).status_code == 409
+    assert client.patch(path, headers=colleague, json={"status": "RESOLVED"}).status_code == 403
+    legacy = "/api/v1/tickets/" + run["ticket_id"]
+    assert client.patch(legacy, headers=colleague, json={"status": "RESOLVED"}).status_code == 409
+    assert client.post(legacy + "/notes", headers=auth, json={"note": "未记录的旁路备注"}).status_code == 409
+    assert client.get(path, headers=auth).json()["ticket"]["status"] == "IN_PROGRESS"
+    assert client.post(path + "/notes", headers=colleague, json={"request_id": str(uuid4()), "note": "同工作区协作备注"}).status_code == 201
+    # Same-tenant colleagues also cannot rate the owner's private diagnosis.
+    assert client.post("/api/v1/helpdesk/runs/" + run["run_id"] + "/feedback", headers=colleague, json={"helpful": True}).status_code == 404

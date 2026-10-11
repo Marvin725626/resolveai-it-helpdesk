@@ -8,14 +8,15 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.helpdesk.models import HelpdeskRun, RunbookChunk
+from app.helpdesk.models import HelpdeskRun, RunbookChunk, HelpdeskTicketEvent
 from app.helpdesk.retrieval import embedding_identity, index_runbook
+from app.helpdesk.ticket_ops import change_status, claim_ticket, find_ticket, record_event, sla_snapshot
 from app.helpdesk.tools import services
 from app.helpdesk.workflow import build_workflow, redact
 from app.models.ticket import Ticket, TicketStatus
@@ -38,6 +39,16 @@ class RunbookRequest(BaseModel):
 
 class TicketUpdate(BaseModel):
     status: TicketStatus
+    expected_updated_at: datetime | None = None
+
+
+class TicketClaim(BaseModel):
+    expected_updated_at: datetime | None = None
+
+
+class TicketNoteRequest(BaseModel):
+    request_id: UUID
+    note: str = Field(min_length=2, max_length=3000)
 
 
 def operator(user):
@@ -171,34 +182,77 @@ async def add_runbook(data: RunbookRequest, user: User = Depends(get_current_use
     return {"code": data.code, "chunks": count}
 
 
+def ticket_dict(ticket, agent_name=None):
+    return {"id": ticket.id, "subject": ticket.subject, "status": ticket.status.value,
+        "priority": ticket.priority.value, "description": ticket.description, "reason": ticket.escalation_reason,
+        "created_at": utc_time(ticket.created_at), "updated_at": utc_time(ticket.updated_at),
+        "resolved_at": utc_time(ticket.resolved_at) if ticket.resolved_at else None,
+        "assigned_agent_id": ticket.assigned_agent_id, "assigned_agent_name": agent_name,
+        "sla": sla_snapshot(ticket)}
+
+
 @router.get("/tickets")
 async def tickets(user: User = Depends(get_current_user), db=Depends(get_db)):
     operator(user)
-    rows = (await db.scalars(select(Ticket).where(Ticket.tenant_id == user.tenant_id).order_by(Ticket.created_at.desc()).limit(100))).all()
-    return [{"id": t.id, "subject": t.subject, "status": t.status.value, "priority": t.priority.value,
-             "description": t.description, "created_at": utc_time(t.created_at), "reason": t.escalation_reason} for t in rows]
+    rows = (await db.execute(select(Ticket, User.full_name).outerjoin(User, and_(
+        User.id == Ticket.assigned_agent_id, User.tenant_id == Ticket.tenant_id)).where(
+        Ticket.tenant_id == user.tenant_id).order_by(Ticket.created_at.desc()).limit(100))).all()
+    return [ticket_dict(ticket, name) for ticket, name in rows]
+
+
+@router.get("/tickets/{ticket_id}")
+async def ticket_detail(ticket_id: UUID, user: User = Depends(get_current_user), db=Depends(get_db)):
+    operator(user)
+    ticket = await find_ticket(db, user, ticket_id)
+    name = await db.scalar(select(User.full_name).where(User.id == ticket.assigned_agent_id, User.tenant_id == user.tenant_id)) if ticket.assigned_agent_id else None
+    condition = (HelpdeskTicketEvent.ticket_id == ticket.id, HelpdeskTicketEvent.tenant_id == user.tenant_id)
+    events = (await db.scalars(select(HelpdeskTicketEvent).where(*condition).order_by(
+        HelpdeskTicketEvent.sequence.desc()).limit(100))).all()
+    count = await db.scalar(select(func.count()).select_from(HelpdeskTicketEvent).where(*condition))
+    return {"ticket": ticket_dict(ticket, name), "event_count": count,
+        "events": [{"id": event.id, "type": event.event_type, "author": event.author_name,
+                    "payload": event.payload, "created_at": utc_time(event.created_at)} for event in reversed(events)]}
 
 
 @router.patch("/tickets/{ticket_id}")
 async def update_ticket(ticket_id: UUID, data: TicketUpdate, user: User = Depends(get_current_user), db=Depends(get_db)):
     operator(user)
-    ticket = await db.scalar(select(Ticket).where(Ticket.id == str(ticket_id), Ticket.tenant_id == user.tenant_id))
-    if not ticket:
-        raise HTTPException(404, "Ticket not found")
-    transitions = {
-        TicketStatus.OPEN: {TicketStatus.IN_PROGRESS, TicketStatus.ESCALATED},
-        TicketStatus.ESCALATED: {TicketStatus.IN_PROGRESS},
-        TicketStatus.IN_PROGRESS: {TicketStatus.RESOLVED, TicketStatus.WAITING_FOR_CUSTOMER},
-        TicketStatus.WAITING_FOR_CUSTOMER: {TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED},
-        TicketStatus.RESOLVED: {TicketStatus.CLOSED, TicketStatus.IN_PROGRESS},
-        TicketStatus.CLOSED: {TicketStatus.IN_PROGRESS},
-    }
-    if data.status != ticket.status and data.status not in transitions[ticket.status]:
-        raise HTTPException(409, "Invalid ticket status transition")
-    ticket.status = data.status
-    ticket.resolved_at = datetime.now(timezone.utc) if data.status in (TicketStatus.RESOLVED, TicketStatus.CLOSED) else None
+    ticket = await find_ticket(db, user, ticket_id)
+    await change_status(db, user, ticket, data.status, data.expected_updated_at)
     await db.commit()
-    return {"id": ticket.id, "status": ticket.status.value}
+    return {"id": ticket.id, "status": ticket.status.value, "updated_at": utc_time(ticket.updated_at)}
+
+
+@router.post("/tickets/{ticket_id}/claim")
+async def take_ticket(ticket_id: UUID, data: TicketClaim, user: User = Depends(get_current_user), db=Depends(get_db)):
+    operator(user)
+    ticket = await find_ticket(db, user, ticket_id)
+    await claim_ticket(db, user, ticket, data.expected_updated_at)
+    await db.commit()
+    return {"id": ticket.id, "status": ticket.status.value, "assigned_agent_id": ticket.assigned_agent_id}
+
+
+@router.post("/tickets/{ticket_id}/notes", status_code=201)
+async def add_ticket_note(ticket_id: UUID, data: TicketNoteRequest, user: User = Depends(get_current_user), db=Depends(get_db)):
+    operator(user)
+    ticket = await find_ticket(db, user, ticket_id)
+    text = redact(data.note.strip())
+    if len(text) < 2:
+        raise HTTPException(422, "备注至少需要两个字符")
+    existing = await db.scalar(select(HelpdeskTicketEvent).where(HelpdeskTicketEvent.id == str(data.request_id)))
+    if existing:
+        if existing.tenant_id != user.tenant_id or existing.ticket_id != ticket.id or existing.author_id != user.id:
+            raise HTTPException(404, "Note not found")
+        if existing.event_type != "note" or existing.payload != {"text": text}:
+            raise HTTPException(409, "Request ID already belongs to another note")
+        return {"id": existing.id, "cached": True}
+    event = record_event(db, ticket, user, "note", {"text": text}, str(data.request_id))
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(409, "备注请求正在处理，请稍后重试")
+    return {"id": event.id, "cached": False}
 
 
 @router.get("/analytics")
@@ -218,3 +272,24 @@ async def analytics(days: int = Query(default=7, ge=1, le=90), user: User = Depe
     summary["scope"] = {"runs": "current_user", "tickets": "current_workspace_all_time"}
     summary["generated_at"] = now
     return summary
+
+
+class RunFeedbackRequest(BaseModel):
+    helpful: bool = Field(strict=True)
+
+
+@router.post("/runs/{run_id}/feedback")
+async def give_feedback(run_id: UUID, data: RunFeedbackRequest, user: User = Depends(get_current_user), db=Depends(get_db)):
+    run = await db.scalar(select(HelpdeskRun).where(HelpdeskRun.id == str(run_id),
+        HelpdeskRun.tenant_id == user.tenant_id, HelpdeskRun.user_id == user.id))
+    if not run:
+        raise HTTPException(404, "Run not found")
+    if run.result.get("status") != "completed":
+        raise HTTPException(409, "只能评价已完成的诊断")
+    previous = run.result.get("feedback")
+    if isinstance(previous, dict) and previous.get("helpful") == data.helpful:
+        return previous
+    feedback = {"helpful": data.helpful, "updated_at": datetime.now(timezone.utc).isoformat()}
+    run.result = {**run.result, "feedback": feedback}
+    await db.commit()
+    return feedback
