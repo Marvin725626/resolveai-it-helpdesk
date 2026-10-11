@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: resolveai
+      POSTGRES_USER: resolveai
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-resolveai-local-only}
+    volumes:
+      - resolveai_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resolveai -d resolveai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      APP_ENV: development
+      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in a root .env before using Docker}
+      DATABASE_URL: postgresql+asyncpg://resolveai:${POSTGRES_PASSWORD:-resolveai-local-only}@postgres:5432/resolveai
+      DEFAULT_LLM_PROVIDER: mock
+      IT_EMBEDDING_PROVIDER: local
+      IT_EMBEDDING_DIMENSION: 256
+      IT_DEMO_ENABLED: "true"
+    ports:
+      - "127.0.0.1:8104:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.resolveai
+    ports:
+      - "127.0.0.1:5174:5174"
+    depends_on:
+      - backend
+volumes:
+  resolveai_pg:

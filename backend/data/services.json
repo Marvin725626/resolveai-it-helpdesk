@@ -1,0 +1,6 @@
+[
+  {"name":"VPN","status":"degraded","detail":"演示事件：部分远程用户认证超时，网络团队正在排查。","team":"网络支持"},
+  {"name":"SSO","status":"operational","detail":"演示数据：身份认证服务运行正常。","team":"身份与权限"},
+  {"name":"GitLab","status":"operational","detail":"演示数据：代码仓库服务运行正常。","team":"平台运维"},
+  {"name":"Email","status":"operational","detail":"演示数据：邮件服务运行正常。","team":"邮件支持"}
+]
