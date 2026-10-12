@@ -179,13 +179,16 @@ async def add_runbook(data: RunbookRequest, user: User = Depends(get_current_use
     return await save_document(db, user, data.code, data.model_dump(), action="created")
 
 
-def ticket_dict(ticket, agent_name=None):
-    return {"id": ticket.id, "subject": ticket.subject, "status": ticket.status.value,
-        "priority": ticket.priority.value, "description": ticket.description, "reason": ticket.escalation_reason,
+def ticket_dict(ticket, agent_name=None, now=None, include_description=True):
+    result={"id": ticket.id, "subject": ticket.subject, "status": ticket.status.value,
+        "priority": ticket.priority.value, "reason": ticket.escalation_reason,
         "created_at": utc_time(ticket.created_at), "updated_at": utc_time(ticket.updated_at),
         "resolved_at": utc_time(ticket.resolved_at) if ticket.resolved_at else None,
         "assigned_agent_id": ticket.assigned_agent_id, "assigned_agent_name": agent_name,
-        "sla": sla_snapshot(ticket)}
+        "sla": sla_snapshot(ticket, now)}
+    if include_description:
+        result["description"]=ticket.description
+    return result
 
 
 @router.get("/tickets")

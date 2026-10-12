@@ -20,7 +20,7 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 
 ![工单组合筛选](resolveai-tickets.png)
 
-组合关键词、状态、优先级过滤最近 100 张工单。CSV 下载当前筛选结果，包括 ID、问题、状态、优先级、升级原因和 UTC 创建时间；不导出完整上下文。中文 BOM、双引号转义与公式前缀处理经过独立校验。
+组合关键词、状态、优先级、接手范围与活跃时限进行数据库筛选和分页。CSV 下载全部匹配结果的最多 1000 条摘要，包括接手人、截止时间等字段；不导出完整上下文。中文 BOM、双引号转义与公式前缀处理经过独立校验。
 
 ## 真实处理时间线与协作
 
@@ -62,3 +62,14 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 ![运行回看与重试入口](resolveai-run-history.png)
 
 新功能及真实验证边界见 [知识与恢复说明](KNOWLEDGE_AND_RECOVERY.md)。
+
+
+## 分页、评估与运维（v1.3.0）
+
+![服务端分页队列](resolveai-paged-queue.png)
+
+![离线样本评估](resolveai-evaluation.png)
+
+![运行检查](resolveai-readiness.png)
+
+详见 [分页与评估](PAGINATION_AND_EVALUATION.md)、[运维备份](OPERATIONS.md) 和 [功能状态](PROJECT_STATUS.md)。

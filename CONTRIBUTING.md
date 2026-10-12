@@ -1,3 +1,25 @@
+# ResolveAI 当前开发与验证说明
+
+当前开发范围位于 backend/app/helpdesk 与 ResolveAI 前端模块。安装步骤见 README，来源与版权见 NOTICE.md / LICENSE。
+
+提交前验证：
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m pytest tests/test_resolveai.py -q
+cd ..\frontend
+npm run format:check
+npm run test:csv
+npm run build
+npm audit --audit-level high
+cd ..
+.\.venv\Scripts\python.exe scripts\evaluate_isolated.py --strict
+```
+
+指定的 ResolveAI 测试与离线评估均使用独立数据库。真实浏览器脚本会访问开发服务；核心及知识脚本会新增开发数据。运行资料、备份、密钥和依赖目录不得提交。请使用实际验收结果，不引用上游主观招聘评分作为当前证据。
+
+## 原上游贡献说明（保留参考）
+
 # Contributing to AI SupportPro
 
 First off, thank you for considering contributing to **AI SupportPro**! It's people like you that make the open-source AI community amazing.

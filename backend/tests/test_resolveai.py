@@ -400,3 +400,133 @@ def test_recover_abandoned_run_only_after_deadline_and_only_for_owner(client,aut
     colleague={"Authorization":"Bearer "+login.json()["access_token"]}
     assert client.get("/api/v1/helpdesk/runs/"+old_id,headers=colleague).status_code==404
     assert client.post("/api/v1/helpdesk/runs/"+fresh_id+"/recover",headers=colleague).status_code==404
+
+
+def test_database_queue_pagination_literal_search_assignment_and_export_limit(client,auth):
+    from datetime import datetime,timedelta,timezone
+    from app.core.database import AsyncSessionLocal
+    from app.models.ticket import Ticket,TicketPriority,TicketStatus
+    seed=diagnose(client,auth,"VPN 认证超时需要支持")
+    owner=client.get("/api/v1/auth/me",headers=auth).json()
+    prefix="BULK-"+uuid4().hex
+    async def seed_rows():
+        async with AsyncSessionLocal() as db:
+            template=await db.get(Ticket,seed["ticket_id"])
+            now=datetime.now(timezone.utc)
+            db.add_all([Ticket(tenant_id=owner["tenant_id"],customer_id=template.customer_id,
+                subject=f"{prefix} isolated item {index}"+(" literal%_token" if index==0 else ""),description="isolated pagination fixture",
+                priority=TicketPriority.MEDIUM,status=TicketStatus.OPEN,assigned_agent_id=owner["id"] if index%2==0 else None,
+                created_at=now-timedelta(seconds=index)) for index in range(1005)])
+            await db.commit()
+    client.portal.call(seed_rows)
+    first=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":prefix,"page_size":50}).json()
+    second=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":prefix,"page_size":50,"page":2}).json()
+    assert first["total"]==1005 and len(first["items"])==50
+    assert "description" not in first["items"][0]
+    assert not ({item["id"] for item in first["items"]}&{item["id"] for item in second["items"]})
+    mine=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":prefix,"assignment":"mine"}).json()
+    unassigned=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":prefix,"assignment":"unassigned"}).json()
+    assert mine["total"]==503 and unassigned["total"]==502
+    literal=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":"%_"}).json()
+    assert literal["total"]==1
+    exported=client.get("/api/v1/helpdesk/ticket-queue/export",headers=auth,params={"q":prefix}).json()
+    assert len(exported["items"])==1000 and exported["total"]==1005 and exported["truncated"]
+    assert "description" not in exported["items"][0]
+    for params in ({"page":0},{"page_size":101},{"status":"BOGUS"},{"assignment":"other"}):
+        assert client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params=params).status_code==422
+
+
+def test_queue_sla_filters_are_database_scoped_and_exclude_completed(client,auth):
+    from datetime import datetime,timedelta,timezone
+    from app.core.database import AsyncSessionLocal
+    from app.models.ticket import Ticket,TicketPriority,TicketStatus
+    run=diagnose(client,auth,"VPN 认证失败需要帮助")
+    owner=client.get("/api/v1/auth/me",headers=auth).json();prefix="SLA-"+uuid4().hex
+    async def seed_rows():
+        async with AsyncSessionLocal() as db:
+            template=await db.get(Ticket,run["ticket_id"]);now=datetime.now(timezone.utc)
+            for label,age,status in [("late",5,TicketStatus.OPEN),("near",3.5,TicketStatus.IN_PROGRESS),("fresh",1,TicketStatus.ESCALATED),("done",6,TicketStatus.RESOLVED)]:
+                db.add(Ticket(tenant_id=owner["tenant_id"],customer_id=template.customer_id,subject=prefix+label,description="isolated SLA fixture",priority=TicketPriority.HIGH,status=status,created_at=now-timedelta(hours=age),resolved_at=now if status==TicketStatus.RESOLVED else None))
+            await db.commit()
+    client.portal.call(seed_rows)
+    for state,label in [("overdue","late"),("due_soon","near"),("on_track","fresh")]:
+        page=client.get("/api/v1/helpdesk/ticket-queue",headers=auth,params={"q":prefix,"sla":state}).json()
+        assert page["total"]==1 and page["items"][0]["subject"].endswith(label)
+        assert page["items"][0]["sla"]["state"]==state
+
+
+def test_run_history_paginates_stably_and_loads_details_on_demand(client,auth):
+    from datetime import datetime,timedelta,timezone
+    from app.core.database import AsyncSessionLocal
+    from app.helpdesk.models import HelpdeskRun
+    owner=client.get("/api/v1/auth/me",headers=auth).json();prefix="HISTORY-"+uuid4().hex
+    identities=[str(uuid4()) for _ in range(55)]
+    async def seed_rows():
+        async with AsyncSessionLocal() as db:
+            stamp=datetime.now(timezone.utc)
+            for index,identity in enumerate(identities):
+                db.add(HelpdeskRun(id=identity,tenant_id=owner["tenant_id"],user_id=owner["id"],question=prefix+str(index),created_at=stamp,
+                    result={"run_id":identity,"status":"completed" if index%2==0 else "failed","category":"software" if index%2==0 else "account","trace":[{"node":"fixture"}],"answer":"isolated fixture answer"}))
+            db.add(HelpdeskRun(id=str(uuid4()),tenant_id=owner["tenant_id"],user_id=owner["id"],question=prefix+"old",created_at=stamp-timedelta(days=60),result={"status":"completed","category":"software"}))
+            await db.commit()
+    client.portal.call(seed_rows)
+    page=client.get("/api/v1/helpdesk/run-history",headers=auth,params={"q":prefix,"days":7,"page_size":10}).json()
+    assert page["total"]==55 and [row["id"] for row in page["items"]]==sorted(identities,reverse=True)[:10]
+    assert "trace" not in page["items"][0]["result"]
+    filtered=client.get("/api/v1/helpdesk/run-history",headers=auth,params={"q":prefix,"days":7,"status":"completed","category":"software"}).json()
+    assert filtered["total"]==28
+    detail=client.get("/api/v1/helpdesk/runs/"+page["items"][0]["id"],headers=auth).json()
+    assert detail["result"]["trace"]==[{"node":"fixture"}]
+    assert client.get("/api/v1/helpdesk/run-history",headers=auth,params={"q":prefix}).json()["total"]==56
+    assert client.get("/api/v1/helpdesk/run-history",headers=auth,params={"days":0}).status_code==422
+
+
+def test_paged_endpoints_preserve_identity_and_tenant_boundaries(client,auth):
+    response=client.post("/api/v1/auth/register",json={"email":"paged@resolveai.example.com","password":"OtherTenant123!","full_name":"Paged owner","tenant_name":"Paged","tenant_slug":"paged-"+uuid4().hex})
+    other={"Authorization":"Bearer "+response.json()["access_token"]}
+    for path in ["/ticket-queue","/ticket-queue/export","/run-history"]:
+        assert client.get("/api/v1/helpdesk"+path,headers=other).json()["total"]==0
+        assert client.get("/api/v1/helpdesk"+path).status_code==401
+    login=client.post("/api/v1/auth/login",json={"email":"colleague@resolveai.example.com","password":"Colleague123!"})
+    colleague={"Authorization":"Bearer "+login.json()["access_token"]}
+    assert client.get("/api/v1/helpdesk/run-history",headers=colleague).json()["total"]==0
+
+
+def test_readiness_reports_actual_queries_and_never_returns_key(client,auth,monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings,"OPENAI_API_KEY","sk-test-private-placeholder")
+    checks=client.get("/api/v1/helpdesk/readiness",headers=auth).json()
+    assert checks["database"]["connected"] and checks["configuration"]["model_key_configured"]
+    assert checks["external_model_connectivity"]=="not_checked" and checks["enterprise_tools"]=="simulated"
+    assert "sk-test-private-placeholder" not in __import__('json').dumps(checks)
+    monkeypatch.setattr(settings,"DEFAULT_LLM_PROVIDER","openai");monkeypatch.setattr(settings,"OPENAI_API_KEY","")
+    checks=client.get("/api/v1/helpdesk/readiness",headers=auth).json()
+    assert any("API Key" in warning for warning in checks["warnings"])
+    assert client.get("/api/v1/helpdesk/readiness").status_code==401
+
+
+def test_bundled_evaluation_is_not_workspace_user_data(client,auth):
+    response=client.get("/api/v1/helpdesk/evaluation-report",headers=auth)
+    assert response.status_code==200
+    data=response.json()
+    assert data["source"]=="bundled_offline_fixture_report"
+    assert data["report"]["real_model_calls"] is False and data["report"]["case_count"]==16
+    assert all("run_id" not in item for item in data["report"]["cases"])
+    assert client.get("/api/v1/helpdesk/evaluation-report").status_code==401
+
+
+def test_sqlite_backup_preserves_data_and_refuses_overwrite_or_outside_path(tmp_path):
+    import importlib.util
+    import sqlite3
+    source_path=Path(__file__).resolve().parents[2]/"scripts/backup_sqlite.py"
+    spec=importlib.util.spec_from_file_location("resolveai_backup",source_path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    original=tmp_path/"source.db";snapshot=tmp_path/"private/backup.sqlite3"
+    with sqlite3.connect(original) as db:
+        db.execute("CREATE TABLE fixtures (name TEXT)");db.execute("INSERT INTO fixtures VALUES (?)",("isolated fixture",))
+    result=module.backup_database(original,snapshot,tmp_path)
+    assert result["quick_check"]=="ok" and result["bytes"]>0
+    with sqlite3.connect(snapshot) as db:assert db.execute("SELECT name FROM fixtures").fetchone()[0]=="isolated fixture"
+    with pytest.raises(FileExistsError):module.backup_database(original,snapshot,tmp_path)
+    with pytest.raises(ValueError):module.backup_database(original,original,tmp_path)
+    with pytest.raises(ValueError):module.backup_database(original,tmp_path.parent/"outside.sqlite3",tmp_path)
+    with sqlite3.connect(original) as db:assert db.execute("SELECT COUNT(*) FROM fixtures").fetchone()[0]==1

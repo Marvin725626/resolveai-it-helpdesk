@@ -49,6 +49,7 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
     await page.getByLabel('搜索问题 / 原因 / ID').fill('VPN');
     await page.getByLabel('工单状态', { exact: true }).selectOption('ESCALATED');
     await page.getByLabel('优先级', { exact: true }).selectOption('HIGH');
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('button')).some(button => button.textContent.includes('导出筛选结果') && !button.disabled));
     const cards = page.locator('.ticket-card');
     assert(await cards.count() > 0);
     for (const card of await cards.all()) assert.match(await card.innerText(), /VPN/i);
@@ -63,6 +64,7 @@ const { chromium } = process.env.PLAYWRIGHT_MODULE ? require(process.env.PLAYWRI
     await page.getByLabel('工单状态', { exact: true }).selectOption('ALL');
     await page.getByLabel('搜索问题 / 原因 / ID').fill(latestId);
     await page.getByLabel('处理时限', { exact: true }).selectOption('on_track');
+    await page.waitForFunction(() => document.querySelectorAll('.ticket-card').length === 1 && !Array.from(document.querySelectorAll('button')).some(button => button.textContent.includes('接手处理') && button.disabled));
     assert.equal(await cards.count(), 1);
     await cards.first().getByRole('button', { name: '接手处理', exact: true }).click();
     await cards.first().getByRole('button', { name: '标记解决', exact: true }).waitFor();

@@ -16,6 +16,7 @@ from app.api.integrations import router as integrations_router
 from app.api.portal import router as portal_router
 from app.helpdesk.api import router as helpdesk_router
 from app.helpdesk.knowledge_api import router as knowledge_router_v2
+from app.helpdesk.operations_api import router as operations_router
 
 
 @asynccontextmanager
@@ -35,7 +36,7 @@ app = FastAPI(
         "ResolveAI IT HelpDesk demo based on AI SupportPro. "
         "LangGraph diagnosis, hybrid retrieval, evidence, simulated read-only tools, and ticket handoff."
     ),
-    version="1.2.0",
+    version="1.3.0",
     lifespan=lifespan
 )
 
@@ -67,6 +68,7 @@ app.include_router(integrations_router, prefix=settings.API_V1_STR)
 app.include_router(portal_router)
 app.include_router(helpdesk_router, prefix=settings.API_V1_STR)
 app.include_router(knowledge_router_v2, prefix=settings.API_V1_STR)
+app.include_router(operations_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/")
@@ -74,7 +76,7 @@ async def root():
     return {
         "app": settings.APP_NAME,
         "tagline": "IT support with evidence and traceable handoff.",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "docs_url": "/docs",
         "api_prefix": settings.API_V1_STR,
         "status": "operational"

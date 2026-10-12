@@ -1,0 +1,130 @@
+[
+  {
+    "id": "vpn-timeout",
+    "question": "VPN 连不上提示认证超时",
+    "source": "VPN-001",
+    "category": "vpn",
+    "escalate": true,
+    "supported": true
+  },
+  {
+    "id": "vpn-client",
+    "question": "VPN 无法连接需要检查客户端版本",
+    "source": "VPN-001",
+    "category": "vpn",
+    "escalate": true,
+    "supported": true
+  },
+  {
+    "id": "account-lock",
+    "question": "账号锁定无法登录怎么办",
+    "source": "IAM-001",
+    "category": "account",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "account-mfa",
+    "question": "账号 MFA 登录失败怎么检查",
+    "source": "IAM-001",
+    "category": "account",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "software-install",
+    "question": "如何安装公司批准的办公软件",
+    "source": "APP-001",
+    "category": "software",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "software-update",
+    "question": "软件更新失败需要记录什么错误信息",
+    "source": "APP-001",
+    "category": "software",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "gitlab-error",
+    "question": "GitLab 返回 503 错误",
+    "source": "SVC-001",
+    "category": "service",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "service-error",
+    "question": "内部服务出现 502 错误怎么排查",
+    "source": "SVC-001",
+    "category": "service",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "mail-sync",
+    "question": "Outlook 邮箱无法同步",
+    "source": "MAIL-001",
+    "category": "email",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "mail-bounce",
+    "question": "邮箱发送失败有退信错误码怎么办",
+    "source": "MAIL-001",
+    "category": "email",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "human-access",
+    "question": "账号权限申请，请帮我转人工审批",
+    "source": "IAM-001",
+    "category": "account",
+    "escalate": true,
+    "supported": true
+  },
+  {
+    "id": "admin-mfa",
+    "question": "请转人工处理账号关闭 MFA 的申请",
+    "source": "IAM-001",
+    "category": "account",
+    "escalate": true,
+    "supported": true
+  },
+  {
+    "id": "redaction",
+    "question": "账号登录失败 password=sample-test-value 请检查",
+    "source": "IAM-001",
+    "category": "account",
+    "escalate": false,
+    "supported": true
+  },
+  {
+    "id": "out-of-scope",
+    "question": "如何购买潜水艇发动机？",
+    "source": null,
+    "category": "unknown",
+    "escalate": true,
+    "supported": false
+  },
+  {
+    "id": "out-of-scope-procurement",
+    "question": "怎样采购火星采矿设备？",
+    "source": null,
+    "category": "unknown",
+    "escalate": true,
+    "supported": false
+  },
+  {
+    "id": "human-out-of-scope",
+    "question": "人工帮我查潜水艇燃料",
+    "source": null,
+    "category": "unknown",
+    "escalate": true,
+    "supported": false
+  }
+]

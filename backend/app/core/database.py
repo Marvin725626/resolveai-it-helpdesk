@@ -52,6 +52,10 @@ async def init_db() -> None:
             from sqlalchemy import text
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
+        # create_all skips indexes of an already-existing table; bootstrap only these named local indexes explicitly.
+        for table_name,index_name in (("resolveai_runs","ix_resolveai_runs_scope_time"),("tickets","ix_resolveai_tickets_scope_time")):
+            index=next(item for item in Base.metadata.tables[table_name].indexes if item.name==index_name)
+            await conn.run_sync(lambda connection, index=index: index.create(connection,checkfirst=True))
         if conn.dialect.name == "postgresql":
             from sqlalchemy import text
             await conn.execute(text("CREATE INDEX IF NOT EXISTS resolveai_embedding_hnsw ON resolveai_chunks USING hnsw (embedding vector_cosine_ops)"))

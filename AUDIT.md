@@ -1,3 +1,5 @@
+> 上游历史资料：此文档来自 AI SupportPro，保留原文作为来源记录。其中评分、性能与招聘结论不作为 ResolveAI 验证证据；当前实测见 [VALIDATION.md](docs/VALIDATION.md)。
+
 # AI SupportPro — Architectural & Repository Audit
 
 **Date:** 2026-10-02  

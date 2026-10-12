@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.2.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.2.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.3.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.3.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -44,7 +44,12 @@ flowchart LR
 - 工单搜索、状态 / 优先级 / 时限筛选与 CSV 导出；CSV 包含接手人和目标截止时间，处理中文、引号与公式前缀。
 - 诊断“有帮助 / 仍需帮助”反馈持久化，允许修改选择，看板统计实际反馈数量。
 - 当前接手人权限、状态机、带时间版本的更新冲突检测、备注请求防重复、备注脱敏；旧版接口不能绕过 ResolveAI 工单处理流程。
-- 27 项后端隔离回归测试、CSV 格式验证、可复用浏览器演示脚本，以及 6 个标注场景的本地评估脚本。
+- 工单服务端分页、关键词 / 状态 / 优先级 / 接手范围 / 活跃时限筛选；跨页导出最多 1000 条匹配摘要。
+- 当前账号运行历史分页，按问题、状态、分类与滚动时间筛选；完整轨迹及证据按需读取。
+- 离线评估页面和 JSON 下载：16 个固定开发样本，使用独立临时数据库，CI 自动执行同一检查。
+- 运行检查：实际数据库查询、当前知识索引身份匹配、密钥配置状态（不返回密钥）。
+- SQLite 在线备份、完整性检查、拒绝覆盖原库与越界写入；备份仅保存到私有 `.local`。
+- 34 项后端隔离回归、CSV 格式验证、前端格式检查、真实浏览器回归、前端依赖审计。
 
 ### 实际工单处理记录
 
@@ -63,6 +68,12 @@ flowchart LR
 - 断线后读取原请求结果；同一标签页刷新可以找回未确认结果。超过三分钟仍在 running 的记录可以手动标记中断，再使用新请求诊断。
 
 [知识管理与恢复说明](docs/KNOWLEDGE_AND_RECOVERY.md)包含 API、边界和实测步骤。
+
+### 分页、评估与运维
+
+![离线固定样本评估页面](docs/resolveai-evaluation.png)
+
+[分页与评估口径](docs/PAGINATION_AND_EVALUATION.md) · [运维与备份](docs/OPERATIONS.md) · [功能状态与验证矩阵](docs/PROJECT_STATUS.md)
 
 ## 本机启动
 
@@ -141,16 +152,16 @@ cd ..\frontend
 npm run test:csv
 npm run build
 cd ..
-.\.venv\Scripts\python.exe scripts\evaluate.py
+.\.venv\Scripts\python.exe scripts\evaluate_isolated.py --strict
 ```
 
-回归测试使用临时数据库，不修改演示数据库。评估会在演示库中生成运行记录及对应工单，结果写入 `docs/evaluation.local.json`。指标包括 Recall@4、MRR、升级决策正确率和延迟。六个小样本不能支持真实业务准确率；引用格式检查也不等于 Faithfulness 评估。具体限制见 [架构说明](docs/ARCHITECTURE.resolveai.md)。
+回归测试使用临时数据库，不修改演示数据库。新的评估脚本使用独立临时数据库，不修改演示库；结果写入 `docs/evaluation.offline.json`。它覆盖 16 个固定人工标注场景，检查分类、来源召回、转人工、引用格式、有界检索和脱敏。小样本不能支持真实业务准确率；引用格式检查不等于 Faithfulness 评估。旧 `scripts/evaluate.py` 保留为六场景的服务端演示脚本。具体限制见 [架构说明](docs/ARCHITECTURE.resolveai.md)。
 
 ## 展示与统计口径
 
 看板诊断指标统计当前账号；工单状态统计当前工作区的全部工单。日期按香港时间划分，转人工率与证据通过率以完成诊断为分母，无样本时显示 `—`。证据通过率不是正确率；P95 使用最近秩法。
 
-工单列表、搜索及 CSV 导出覆盖最近 100 张工作区工单，导出仅包含列表摘要。详细边界与演示步骤见 [DEMO.md](docs/DEMO.md)。GitHub 提供源码和截图；运行工作台需要启动本地服务。
+工单队列和运行记录使用服务端分页，默认每页 20 条、最多每页 100 条。工单导出覆盖筛选结果的最多 1000 条，仅包含摘要；超出时会明确提示截断。详细边界与演示步骤见 [DEMO.md](docs/DEMO.md)。GitHub 提供源码和截图；运行工作台需要启动本地服务。
 
 ## 示例
 

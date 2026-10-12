@@ -4,7 +4,7 @@ Validated on 2026-10-12 in `E:\agent\resolveai`.
 
 - Python: isolated `.venv`, versions in `backend/requirements.lock.txt`.
 - Frontend: `npm run build` passes TypeScript checking and Vite production build.
-- Backend: 27 ResolveAI regression tests pass using a temporary SQLite database. Database engine disposal is verified by clean test exit.
+- Backend: 34 ResolveAI regression tests pass using a temporary SQLite database. Database engine disposal is verified by clean test exit.
 - Live API: six manually labelled scenarios run through the actual server; Recall@4 = 1.0, MRR = 1.0, escalation-decision accuracy = 1.0. This is a tiny offline smoke set, not production performance. Per-case results and actual latency are in locally generated `evaluation.local.json`.
 - Browser: demo sign-in; VPN diagnosis with source `[VPN-001]`; simulated degraded service creates a ticket; UI can take and resolve the ticket; the desktop layout and 390px responsive layout render without page overflow.
 - Service ports: frontend 5174 and backend 8104. Startup and stop scripts isolate processes by recorded PID and project command line.
@@ -41,3 +41,13 @@ The operation log is application-level, not a tamper-proof audit product. Target
 - New screenshots show actual developer sample sources and version events; repeated trial samples were archived with history preserved.
 
 No durable graph checkpointing or production deployment claims are added. Knowledge export is not a full database backup. Existing real-model/PostgreSQL/Docker validation limitations remain.
+
+
+## v1.3.0 verification · 2026-10-13
+
+- Backend: 34 passing regressions, including 1005 isolated synthetic tickets; disjoint pages; mine/unassigned scope; literal wildcard characters; 1000-row export cap; summary-only responses; stable same-time history ordering; lazy full-result fetch; readiness without key disclosure; backup integrity and path/overwrite constraints.
+- Offline evaluation: 16 / 16 labelled fixture checks passed in a disposable database; real_model_calls=false. The committed report records actual generation time, version, per-case checks and latency. CI runs the same strict evaluation.
+- Browser: core diagnosis/feedback/handoff/notes/wait/resume/resolve/close; actual ticket/history pages; cross-page CSV; assignment/category filters; full result on demand; report download; readiness; 390px evaluation layout with no document overflow or uncaught page exceptions.
+- Frontend: typecheck and production build; CSV formatting and formula handling; authored-module formatting. npm audit issues were remediated by a Vite patch, compatible dependency updates and removing an unnecessary affected plugin chain.
+
+These are development fixtures and local browser operations. They do not establish real customer volume, production business impact, semantic faithfulness or verified external-model/enterprise-system integration.

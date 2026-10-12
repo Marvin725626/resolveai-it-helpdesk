@@ -35,7 +35,7 @@ The graph has no durable LangGraph checkpointer; durable final run records use S
 
 `GET /helpdesk/analytics?days=7` requires the authenticated support role. It queries only the current tenant/user's persisted runs in a 1–90 day Hong Kong calendar window, excludes future records, then computes daily counts, categories, completion-based rates and nearest-rank P95. Ticket statuses are grouped in SQL for the current tenant across all time. No questions, descriptions or tool payloads are returned in the metric response.
 
-`AnalyticsPanel.tsx` offers 7/30/90-day presets, data tables and metric JSON export. Ticket keyword/status/priority filters operate on the existing latest-100 list; `csv.ts` exports only summary columns and handles spreadsheet formula prefixes. Larger volumes need server-side pagination and grouped metric queries; this implementation targets the documented local MVP scale.
+`AnalyticsPanel.tsx` offers 7/30/90-day presets, data tables and metric JSON export. The v1.3.0 workbench uses scoped database pagination and filters; old latest-100 APIs remain for compatibility. CSV exports matching summary records across pages, capped at 1000, and handles spreadsheet formula prefixes. Analytics still targets the documented local MVP scale.
 
 
 ## Ticket collaboration and feedback (v1.1.0)
@@ -54,3 +54,10 @@ For shared deployment, add versioned database migrations, supported concurrency 
 KnowledgeRevision snapshots are unique by tenant/code/version. Source updates, previous-source deletion and regenerated vector/sparse chunks commit in one transaction. A legacy source starts at v0 and receives a baseline snapshot on its first actual edit; seed logic respects managed archived sources. Saved diagnosis evidence is never rewritten when a source changes.
 
 KnowledgePanel offers UTF-8 text import, version restoration, read-only retrieval preview and knowledge-only export. Pending run UUIDs are kept in tab-scoped sessionStorage; reconnect/reload reads the original owner-scoped result. Abandoned running records older than three minutes can be marked interrupted. This is final-result recovery and manual stale-record handling, not durable LangGraph checkpoint continuation.
+
+
+## Paged operations and reproducible checks (v1.3.0)
+
+operations_api.py provides database filters, scope counts, stable time/ID ordering, offset pagination and bounded cross-page exports. Ticket queries defer the large description column; history queries extract only needed JSON scalars. Full evidence is fetched only when opened. Tenant/time and tenant/user/time indexes are explicitly bootstrapped with checkfirst on existing local tables.
+
+The bundled offline report is generated in a disposable database from 16 labelled fixtures. It is isolated from tenant user data and shows rule/hash/mock checks, not a live model score. Readiness proves database queries and configuration presence only. backup_sqlite.py uses a read-only source, SQLite online backup and quick_check, confining CLI snapshots to private .local storage without replacing source data.

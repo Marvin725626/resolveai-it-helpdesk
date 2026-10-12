@@ -1,0 +1,433 @@
+{
+  "software_version": "1.3.0",
+  "generated_at": "2026-10-12T15:20:39.690533+00:00",
+  "scope": "16 manually labelled offline development fixtures; isolated SQLite database, rule routing, hash embeddings and simulated tools",
+  "real_model_calls": false,
+  "production_business_impact": "not measured",
+  "semantic_faithfulness": "not measured; citation checks only verify format",
+  "case_count": 16,
+  "passed_cases": 16,
+  "recall_at_4": 1,
+  "mrr": 1.0,
+  "escalation_accuracy": 1,
+  "category_accuracy": 1,
+  "latency_ms_mean": 22.77,
+  "cases": [
+    {
+      "id": "vpn-timeout",
+      "expected_source": "VPN-001",
+      "actual_sources": [
+        "VPN-001",
+        "SVC-001",
+        "MAIL-001",
+        "IAM-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "vpn",
+      "escalate": true,
+      "supported": true,
+      "latency_ms": 47.99,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "vpn-client",
+      "expected_source": "VPN-001",
+      "actual_sources": [
+        "VPN-001",
+        "MAIL-001",
+        "APP-001",
+        "SVC-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "vpn",
+      "escalate": true,
+      "supported": true,
+      "latency_ms": 26.89,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "account-lock",
+      "expected_source": "IAM-001",
+      "actual_sources": [
+        "IAM-001",
+        "VPN-001",
+        "SVC-001",
+        "MAIL-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "account",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 18.47,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "account-mfa",
+      "expected_source": "IAM-001",
+      "actual_sources": [
+        "IAM-001",
+        "VPN-001",
+        "APP-001",
+        "SVC-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "account",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 16.83,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "software-install",
+      "expected_source": "APP-001",
+      "actual_sources": [
+        "APP-001",
+        "VPN-001",
+        "SVC-001",
+        "IAM-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "software",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 16.63,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "software-update",
+      "expected_source": "APP-001",
+      "actual_sources": [
+        "APP-001",
+        "VPN-001",
+        "MAIL-001",
+        "IAM-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "software",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 19.04,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "gitlab-error",
+      "expected_source": "SVC-001",
+      "actual_sources": [
+        "SVC-001",
+        "MAIL-001",
+        "VPN-001",
+        "APP-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "service",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 19.3,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "service-error",
+      "expected_source": "SVC-001",
+      "actual_sources": [
+        "SVC-001",
+        "VPN-001",
+        "MAIL-001",
+        "APP-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "service",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 16.88,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "mail-sync",
+      "expected_source": "MAIL-001",
+      "actual_sources": [
+        "MAIL-001",
+        "SVC-001",
+        "VPN-001",
+        "IAM-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "email",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 18.56,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "mail-bounce",
+      "expected_source": "MAIL-001",
+      "actual_sources": [
+        "MAIL-001",
+        "VPN-001",
+        "APP-001",
+        "SVC-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "email",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 17.01,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "human-access",
+      "expected_source": "IAM-001",
+      "actual_sources": [
+        "IAM-001",
+        "SVC-001",
+        "APP-001",
+        "VPN-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "account",
+      "escalate": true,
+      "supported": true,
+      "latency_ms": 24.87,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "admin-mfa",
+      "expected_source": "IAM-001",
+      "actual_sources": [
+        "IAM-001",
+        "VPN-001",
+        "APP-001",
+        "SVC-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "account",
+      "escalate": true,
+      "supported": true,
+      "latency_ms": 23.85,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "redaction",
+      "expected_source": "IAM-001",
+      "actual_sources": [
+        "IAM-001",
+        "VPN-001",
+        "SVC-001",
+        "APP-001"
+      ],
+      "rank": 1,
+      "reciprocal_rank": 1.0,
+      "category": "account",
+      "escalate": false,
+      "supported": true,
+      "latency_ms": 16.13,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "out-of-scope",
+      "expected_source": null,
+      "actual_sources": [
+        "IAM-001",
+        "APP-001",
+        "MAIL-001",
+        "VPN-001"
+      ],
+      "rank": null,
+      "reciprocal_rank": 0,
+      "category": "unknown",
+      "escalate": true,
+      "supported": false,
+      "latency_ms": 27.05,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "out-of-scope-procurement",
+      "expected_source": null,
+      "actual_sources": [
+        "SVC-001",
+        "IAM-001",
+        "MAIL-001",
+        "APP-001"
+      ],
+      "rank": null,
+      "reciprocal_rank": 0,
+      "category": "unknown",
+      "escalate": true,
+      "supported": false,
+      "latency_ms": 27.21,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    },
+    {
+      "id": "human-out-of-scope",
+      "expected_source": null,
+      "actual_sources": [
+        "IAM-001",
+        "APP-001",
+        "SVC-001",
+        "MAIL-001"
+      ],
+      "rank": null,
+      "reciprocal_rank": 0,
+      "category": "unknown",
+      "escalate": true,
+      "supported": false,
+      "latency_ms": 27.57,
+      "checks": {
+        "category": true,
+        "escalation": true,
+        "support_gate": true,
+        "citation_format": true,
+        "retrieval": true,
+        "bounded_retry": true,
+        "redaction": true
+      },
+      "passed": true
+    }
+  ]
+}

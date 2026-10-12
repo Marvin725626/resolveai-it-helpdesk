@@ -1,3 +1,5 @@
+> 上游历史资料：此文档来自 AI SupportPro，保留原文作为来源记录。其中评分、性能与招聘结论不作为 ResolveAI 验证证据；当前实测见 [VALIDATION.md](VALIDATION.md)。
+
 # AI SupportPro — Senior / Staff Engineer Portfolio Evaluation & Job Readiness Audit
 
 **Evaluator:** Principal AI Architect & Engineering Hiring Manager  

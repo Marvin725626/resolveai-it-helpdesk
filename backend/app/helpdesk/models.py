@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint
 
 from app.core.config import settings
 from app.core.database import Base
@@ -58,3 +58,8 @@ class KnowledgeRevision(Base):
     action = Column(String(32), nullable=False)
     author_name = Column(String(100), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+Index("ix_resolveai_runs_scope_time", HelpdeskRun.tenant_id, HelpdeskRun.user_id, HelpdeskRun.created_at, HelpdeskRun.id)
+from app.models.ticket import Ticket
+Index("ix_resolveai_tickets_scope_time", Ticket.tenant_id, Ticket.created_at, Ticket.id)
