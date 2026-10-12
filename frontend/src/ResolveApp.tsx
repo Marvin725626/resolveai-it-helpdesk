@@ -1,15 +1,15 @@
+import KnowledgePanel from './KnowledgePanel';
 import TicketOps, { SlaBadge, slaLabel, type TicketSummary } from './TicketOps';
 import { ticketCsv } from './csv';
 import AnalyticsPanel from './AnalyticsPanel';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Cpu, FileText, History, Layers, LogOut, MessageSquare, Plus, Send, ShieldCheck, Ticket, Wrench, Zap } from 'lucide-react';
+import { Activity, ArrowDownToLine, ArrowRight, BookOpen, Check, ChevronRight, CircleHelp, Cpu, FileText, History, Layers, LogOut, MessageSquare, Send, ShieldCheck, Ticket, Wrench, Zap } from 'lucide-react';
 
 type Evidence = { code: string; title: string; content: string; overlap: number; rrf_score: number };
 type Tool = { name: string; arguments: Record<string, unknown>; result: Record<string, unknown>; duration_ms: number };
 type Trace = { node: string; label: string; duration_ms: number; detail: Record<string, unknown> };
 type Run = { run_id: string; question: string; status: string; answer?: string; answer_sources?: string[]; category?: string; evidence?: Evidence[]; tools?: Tool[]; trace?: Trace[]; ticket_id?: string; escalate?: boolean; reason?: string; latency_ms?: number; error?: string; supported?: boolean; feedback?: { helpful: boolean; updated_at: string } };
 type TicketItem = TicketSummary;
-type Book = { id: string; code: string; title: string; content: string; keywords: string };
 type Overview = { chunks: number; runs: number; open_tickets: number; mode: string; database: string; embedding_provider: string; services: { name: string; status: string; detail: string }[] };
 type View = 'analytics' | 'diagnose' | 'tickets' | 'knowledge' | 'history' | 'settings';
 const nav = [{ id: 'analytics', label: '运营看板', icon: Activity }, { id: 'diagnose', label: '智能诊断', icon: MessageSquare }, { id: 'tickets', label: '工单队列', icon: Ticket }, { id: 'knowledge', label: '知识库', icon: BookOpen }, { id: 'history', label: '运行记录', icon: History }, { id: 'settings', label: '运行配置', icon: Cpu }] as const;
@@ -28,7 +28,6 @@ function App() {
   const [result, setResult] = useState<Run>();
   const [trace, setTrace] = useState<Trace[]>([]);
   const [tickets, setTickets] = useState<TicketItem[]>([]);
-  const [books, setBooks] = useState<Book[]>([]);
   const [history, setHistory] = useState<{ id: string; question: string; created_at: string; result: Run }[]>([]);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [ticketBusy, setTicketBusy] = useState(false);
@@ -36,13 +35,12 @@ function App() {
   const [ticketSearch, setTicketSearch] = useState('');
   const [ticketStatus, setTicketStatus] = useState('ALL');
   const [ticketPriority, setTicketPriority] = useState('ALL');
-  const [showAdd, setShowAdd] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
   const [email, setEmail] = useState('demo@resolveai.example.com');
   const [password, setPassword] = useState('ResolveAI123!');
   const abort = useRef<AbortController | undefined>(undefined);
 
-  function logout() { abort.current?.abort(); localStorage.removeItem('resolveai_token'); setToken(''); setOverview(undefined); setResult(undefined); setTrace([]); }
+  function logout() { abort.current?.abort(); localStorage.removeItem('resolveai_token'); sessionStorage.removeItem('resolveai_pending_run'); setToken(''); setOverview(undefined); setResult(undefined); setTrace([]); }
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch('/api/v1' + path, { ...init, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...init?.headers } });
     if (response.status === 401) logout();
@@ -50,10 +48,20 @@ function App() {
     return response.json();
   }
   async function refresh() {
-    const [o, t, b, h] = await Promise.all([api<Overview>('/helpdesk/overview'), api<TicketItem[]>('/helpdesk/tickets'), api<Book[]>('/helpdesk/runbooks'), api<typeof history>('/helpdesk/runs')]);
-    setOverview(o); setTickets(t); setBooks(b); setHistory(h);
+    const [o, t, h] = await Promise.all([api<Overview>('/helpdesk/overview'), api<TicketItem[]>('/helpdesk/tickets'), api<typeof history>('/helpdesk/runs')]);
+    setOverview(o); setTickets(t); setHistory(h);
   }
-  useEffect(() => { if (token) refresh().catch(e => setError(e.message)); return () => abort.current?.abort(); }, [token]);
+  useEffect(() => {
+    if (token) {
+      refresh().catch(e => setError(e.message));
+      const pending = sessionStorage.getItem('resolveai_pending_run');
+      if (pending) api<{ question: string; result: Run }>(`/helpdesk/runs/${pending}`).then(saved => {
+        setQuestion(saved.question); setResult(saved.result); setTrace(saved.result.trace || []);
+        if (saved.result.status !== 'running') sessionStorage.removeItem('resolveai_pending_run');
+      }).catch(() => sessionStorage.removeItem('resolveai_pending_run'));
+    }
+    return () => abort.current?.abort();
+  }, [token]);
 
   async function login(event: FormEvent) {
     event.preventDefault(); setLoginBusy(true); setError('');
@@ -70,9 +78,11 @@ function App() {
     event.preventDefault(); if (busy || question.trim().length < 4) return;
     setBusy(true); setError(''); setResult(undefined); setTrace([]);
     abort.current = new AbortController();
+    const requestId = crypto.randomUUID();
+    sessionStorage.setItem('resolveai_pending_run', requestId);
     try {
       const response = await fetch('/api/v1/helpdesk/runs/stream', { method: 'POST', signal: abort.current.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ request_id: crypto.randomUUID(), question: question.trim() }) });
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ request_id: requestId, question: question.trim() }) });
       if (response.status === 401) logout();
       if (!response.ok || !response.body) { const body = await response.json(); throw new Error(typeof body.detail === 'string' ? body.detail : '诊断请求失败'); }
       const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; let completed = false;
@@ -90,8 +100,18 @@ function App() {
         if (chunk.done) { if (buffer.trim()) consume(buffer); break; }
       }
       if (!completed) throw new Error('连接中断，未收到最终诊断。请重新提交。');
+      sessionStorage.removeItem('resolveai_pending_run');
       await refresh();
-    } catch (e) { if (!(e instanceof DOMException && e.name === 'AbortError')) setError(e instanceof Error ? e.message : '诊断失败'); }
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        try {
+          const saved = await api<{ result: Run }>(`/helpdesk/runs/${requestId}`);
+          setResult(saved.result); setTrace(saved.result.trace || []); await refresh();
+          if (saved.result.status !== 'running') sessionStorage.removeItem('resolveai_pending_run');
+          setError(saved.result.status === 'completed' ? '' : saved.result.error || '诊断连接中断，已保留运行 ID，可在运行记录中查看状态。');
+        } catch { setError(e instanceof Error ? e.message : '诊断失败'); }
+      }
+    }
     finally { setBusy(false); }
   }
 
@@ -106,14 +126,13 @@ function App() {
     } catch (e) { setError(e instanceof Error ? e.message : '状态更新失败'); await refresh().catch(() => {}); }
     finally { setTicketBusy(false); }
   }
-  async function addBook(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { setError(''); await api('/helpdesk/runbooks', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) }); setShowAdd(false); await refresh(); }
-    catch (e) { setError(e instanceof Error ? e.message : '知识入库失败'); }
-  }
   function exportRun() {
     if (!result) return; const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = `resolveai-${result.run_id}.json`; anchor.click(); URL.revokeObjectURL(url);
+  }
+  async function recoverRun(id: string) {
+    try { setError(''); await api(`/helpdesk/runs/${id}/recover`, { method: 'POST' }); await refresh(); }
+    catch(e) { setError(e instanceof Error ? e.message : '运行恢复失败'); }
   }
   async function giveFeedback(helpful: boolean) {
     if (!result || feedbackBusy) return;
@@ -147,8 +166,8 @@ function App() {
       {!busy && !result && <section className="empty-guidance"><div className="empty-symbol"><Layers size={28}/></div><h3>每一步，都有依据</h3><p>知识检索 → 证据检查 → 工具诊断 → 回答或人工工单</p><div><span><FileText size={16}/>查看引用</span><span><Wrench size={16}/>追踪工具</span><span><History size={16}/>回溯记录</span></div></section>}
     </div><aside className="context-column"><section className="panel service-panel"><div className="section-heading"><h2><Activity size={17}/>服务状态</h2><span className="micro-label">模拟数据</span></div>{overview?.services.map(service => <div className="service-row" key={service.name}><span className={service.status === 'operational' ? 'status-dot' : 'status-dot degraded'}/><strong>{service.name}</strong><span>{service.status === 'operational' ? '运行正常' : '服务降级'}</span></div>)}<p className="panel-footnote">工具从本地 fixture 读取状态，未连接真实企业系统。</p></section><section className="panel evidence-panel"><div className="section-heading"><h2><BookOpen size={17}/>引用证据</h2><span className="small-pill">{result?.supported ? citedEvidence.length : 0}</span></div>{result?.supported ? citedEvidence.map((e, i) => <article className="evidence" key={`${e.code}-${i}`}><span className="source-code">[{e.code}]</span><h3>{e.title}</h3><p>{e.content.slice(0, 110)}…</p><details><summary>查看原文<ChevronRight size={12}/></summary><p className="full-content">{e.content}</p><small>词项覆盖 {Math.round(e.overlap * 100)}% · RRF {e.rrf_score}</small></details></article>) : <div className="context-empty"><FileText size={24}/><p>完成诊断后，相关 SOP<br/>与来源会显示在这里。</p></div>}</section><section className="panel"><div className="section-heading"><h2><Wrench size={17}/>工具调用</h2></div>{result?.tools?.length ? result.tools.map((tool, i) => <details className="tool-detail" key={i}><summary><span>{toolLabel[tool.name] || tool.name}</span><span>{tool.duration_ms.toFixed(1)} ms</span></summary><pre>{JSON.stringify(tool.result, null, 2)}</pre></details>) : <p className="muted tiny">运行后展示实际返回结果。</p>}</section><div className="help-note"><CircleHelp size={18}/><p>证据不足时会再次检索；仍无法诊断则将上下文转交人工。</p></div></aside></div>}
     {view === 'tickets' && <section className="panel"><div className="section-heading"><h2>支持工单<span className="small-pill">{filteredTickets.length} / {tickets.length}</span></h2><button className="text-button" onClick={() => refresh().catch(e => setError(e.message))}>刷新列表</button></div><div className="ticket-filters"><label>搜索问题 / 原因 / ID<input value={ticketSearch} onChange={e => setTicketSearch(e.target.value)} placeholder="例如 VPN 或权限"/></label><label>工单状态<select aria-label="工单状态" value={ticketStatus} onChange={e => setTicketStatus(e.target.value)}><option value="ALL">全部状态</option>{Object.entries(statusLabel).map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>优先级<select aria-label="优先级" value={ticketPriority} onChange={e => setTicketPriority(e.target.value)}><option value="ALL">全部优先级</option><option value="URGENT">紧急</option><option value="HIGH">高</option><option value="MEDIUM">普通</option><option value="LOW">低</option></select></label><label>处理时限<select aria-label="处理时限" value={ticketSla} onChange={event => setTicketSla(event.target.value)}><option value="ALL">全部时限</option>{Object.entries(slaLabel).map(([value,label]) => <option value={value} key={value}>{label}</option>)}</select></label><button className="secondary" disabled={!filteredTickets.length} onClick={exportTickets}><ArrowDownToLine size={15}/>导出筛选结果</button></div><p className="panel-footnote">搜索与导出覆盖最近 100 张工作区工单；CSV 仅包含列表摘要，不包含诊断上下文。时限为开发演示目标，刷新列表可更新提醒。</p>{filteredTickets.length === 0 ? <div className="context-empty large"><Ticket size={36}/><h3>{tickets.length ? '没有匹配的工单' : '当前没有工单'}</h3><p>{tickets.length ? '调整搜索或筛选条件后重试。' : '需人工介入的诊断将自动出现在这里。'}</p></div> : <div className="ticket-list">{filteredTickets.map(t => <article className="ticket-card" key={t.id}><div><span className="source-code">#{t.id.slice(0, 8)}</span><h3>{t.subject}</h3><p>{t.reason}</p><small>{new Date(t.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' })} · {t.priority === 'HIGH' ? '高优先级' : '普通优先级'}</small><div className="ticket-owner"><span>接手人：{t.assigned_agent_name || '尚未接手'}</span><SlaBadge ticket={t}/></div></div><div className="ticket-actions"><span className={t.status === 'RESOLVED' || t.status === 'CLOSED' ? 'small-pill green' : 'small-pill amber'}>{statusLabel[t.status]}</span>{['OPEN','ESCALATED','CLOSED','RESOLVED','WAITING_FOR_CUSTOMER'].includes(t.status) && <button className="secondary" disabled={ticketBusy} onClick={() => changeStatus(t.id,'IN_PROGRESS',['OPEN','ESCALATED'].includes(t.status) && !t.assigned_agent_id)}>{['CLOSED','RESOLVED'].includes(t.status) ? '重新处理' : t.status === 'WAITING_FOR_CUSTOMER' ? '继续处理' : '接手处理'}</button>}{t.status === 'IN_PROGRESS' && <button className="secondary" disabled={ticketBusy} onClick={() => changeStatus(t.id,'RESOLVED')}>标记解决</button>}{t.status === 'IN_PROGRESS' && <button className="secondary" disabled={ticketBusy} onClick={() => changeStatus(t.id,'WAITING_FOR_CUSTOMER')}>等待员工反馈</button>}{t.status === 'RESOLVED' && <button className="secondary" disabled={ticketBusy} onClick={() => changeStatus(t.id,'CLOSED')}>关闭工单</button>}</div><TicketOps ticket={t} api={api} onChanged={refresh}/></article>)}</div>}</section>}
-    {view === 'knowledge' && <section className="panel"><div className="section-heading"><h2>IT 操作手册与 FAQ</h2><button className="primary" onClick={() => setShowAdd(!showAdd)}><Plus size={16}/>{showAdd ? '收起表单' : '新增知识'}</button></div>{showAdd && <form className="knowledge-form" onSubmit={addBook}><label>来源代码<input name="code" placeholder="DNS-001" pattern="[A-Z]{2,10}-[0-9]{3,5}" required/></label><label>标题<input name="title" minLength={2} maxLength={200} placeholder="DNS 解析失败 SOP" required/></label><label className="wide">关键词<input name="keywords" placeholder="dns 网络 解析 故障" maxLength={500}/></label><label className="wide">操作步骤<textarea name="content" minLength={20} maxLength={15000} required placeholder="说明适用范围、检查步骤和人工升级条件（至少 20 字）"/></label><button className="primary">保存并建立检索索引<ArrowRight size={15}/></button></form>}<div className="book-grid">{books.map(book => <article className="book-card" key={book.id}><div className="book-icon"><BookOpen size={22}/></div><span className="source-code">{book.code}</span><h3>{book.title}</h3><p>{book.content.slice(0,100)}…</p><details><summary>查看全部内容</summary><p className="full-content">{book.content}</p></details></article>)}</div></section>}
-    {view === 'history' && <section className="panel"><div className="section-heading"><h2>最近 30 次运行</h2><span className="micro-label">当前账号</span></div>{history.length === 0 ? <div className="context-empty large"><History size={35}/><h3>还没有运行记录</h3><p>从智能诊断提交一个问题开始。</p></div> : history.map(run => <button className="history-row" key={run.id} onClick={() => { setResult(run.result); setTrace(run.result.trace || []); setQuestion(run.question); setView('diagnose'); }}><span className="history-icon"><MessageSquare size={18}/></span><span><strong>{run.question}</strong><small>{new Date(run.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' })} · {run.result.status === 'completed' ? '已完成' : run.result.status} · {run.result.latency_ms || 0} ms</small></span><ChevronRight size={17}/></button>)}</section>}
+    {view === 'knowledge' && <KnowledgePanel api={api} onChanged={refresh}/>}
+    {view === 'history' && <section className="panel"><div className="section-heading"><h2>最近 30 次运行</h2><button className="text-button" onClick={()=>refresh().catch(e=>setError(e.message))}>刷新运行记录</button></div><p className="panel-footnote">超过三分钟仍未完成的运行可标记中断。重新诊断使用新请求 ID，不会改写旧记录。</p>{history.length === 0 ? <div className="context-empty large"><History size={35}/><h3>还没有运行记录</h3></div> : history.map(run => <article className="history-row" key={run.id}><button className="history-open" onClick={() => { setResult(run.result); setTrace(run.result.trace || []); setQuestion(run.question); setView('diagnose'); }}><span className="history-icon"><MessageSquare size={18}/></span><span><strong>{run.question}</strong><small>{new Date(run.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Hong_Kong' })} · {({completed:'已完成',running:'运行中',failed:'失败',cancelled:'已取消',interrupted:'已中断'} as Record<string,string>)[run.result.status] || run.result.status} · {run.result.latency_ms || 0} ms</small></span><ChevronRight size={17}/></button><div className="history-controls">{run.result.status === 'running' && <button className="secondary" disabled={Date.now()-Date.parse(run.created_at)<180000} onClick={()=>recoverRun(run.id)}>标记超时中断</button>}<button className="secondary" onClick={()=>{setQuestion(run.question);setResult(undefined);setTrace([]);setView('diagnose');}}>填入问题重试</button></div></article>)}</section>}
     {view === 'settings' && <section className="panel settings-panel"><h2>当前运行环境</h2><dl><div><dt>回答与工具选择</dt><dd>{overview?.mode === 'mock' ? '离线规则与 SOP 摘录' : 'OpenAI-compatible 模型'}</dd></div><div><dt>检索向量</dt><dd>{overview?.embedding_provider}</dd></div><div><dt>数据库</dt><dd>{overview?.database === 'sqlite' ? 'SQLite · 本地小规模回退' : 'PostgreSQL · pgvector'}</dd></div><div><dt>账号 / 服务工具</dt><dd>模拟 fixture · 只读</dd></div><div><dt>检索流程</dt><dd>稀疏 + 向量 → RRF → 词项覆盖重排</dd></div><div><dt>来源与许可证</dt><dd><a href="https://github.com/theclevertrader/ai-supportpro" target="_blank" rel="noreferrer">AI SupportPro · MIT</a></dd></div></dl><div className="config-note"><h3>切换真实模型</h3><p>在项目 <code>backend/.env</code> 中配置模型地址、名称和 API Key，重启后端。详细步骤见 README。若更换 embedding 模型或维度，需要重新建索引。</p><p>账户状态与服务检查尚未接入企业系统；当前版本用于流程演示和开发验证。</p></div></section>}
     <footer className="footer"><span>ResolveAI · IT HelpDesk Agent</span><span>基于 AI SupportPro / MIT · 已保留来源</span></footer></main></div></div>;
 }

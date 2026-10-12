@@ -45,3 +45,16 @@ class HelpdeskTicketEvent(Base):
     event_type = Column(String(32), nullable=False)
     payload = Column(JSON, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class KnowledgeRevision(Base):
+    __tablename__ = "resolveai_knowledge_revisions"
+    __table_args__ = (UniqueConstraint("tenant_id", "code", "version"),)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tenant_id = Column(String(36), ForeignKey("tenants.id"), nullable=False, index=True)
+    code = Column(String(50), nullable=False)
+    version = Column(Integer, nullable=False)
+    snapshot = Column(JSON, nullable=False)
+    action = Column(String(32), nullable=False)
+    author_name = Column(String(100), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

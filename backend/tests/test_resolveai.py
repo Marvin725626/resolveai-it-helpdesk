@@ -311,3 +311,92 @@ def test_support_agent_cannot_take_or_change_another_agents_ticket(client, auth)
     assert client.post(path + "/notes", headers=colleague, json={"request_id": str(uuid4()), "note": "同工作区协作备注"}).status_code == 201
     # Same-tenant colleagues also cannot rate the owner's private diagnosis.
     assert client.post("/api/v1/helpdesk/runs/" + run["run_id"] + "/feedback", headers=colleague, json={"helpful": True}).status_code == 404
+
+
+def test_knowledge_edit_versions_archive_restore_and_snapshot(client, auth):
+    initial = next(item for item in client.get("/api/v1/helpdesk/knowledge", headers=auth).json() if item["code"] == "VPN-001")
+    before = diagnose(client, auth, "VPN 认证失败怎么排查")
+    update = {**initial, "expected_version": initial["version"], "title": "VPN Quasar 专项排查", "content": "Quasar VPN 认证失败时，先核对客户端版本和网关地址，再将 Quasar 错误信息提交网络团队处理。"}
+    path = "/api/v1/helpdesk/knowledge/VPN-001"
+    changed = client.put(path, headers=auth, json=update)
+    assert changed.status_code == 200
+    version = changed.json()["version"]
+    assert client.put(path, headers=auth, json=update).status_code == 409
+    preview = client.post("/api/v1/helpdesk/knowledge/search", headers=auth, json={"query":"Quasar VPN 认证排查"}).json()
+    assert preview["results"][0]["title"] == update["title"]
+    archived = client.put(path, headers=auth, json={**update, "expected_version": version, "active":False}).json()
+    from app.helpdesk.seed import seed_demo
+    client.portal.call(seed_demo)
+    hits = client.post("/api/v1/helpdesk/knowledge/search", headers=auth, json={"query":"Quasar VPN 认证排查"}).json()["results"]
+    assert not any(item["code"] == "VPN-001" for item in hits)
+    restored = client.post(path+"/restore",headers=auth,json={"expected_version":archived["version"],"version":0})
+    assert restored.status_code == 200 and restored.json()["active"]
+    history = client.get(path+"/revisions",headers=auth).json()
+    assert [row["version"] for row in history] == [3,2,1,0]
+    assert history[-1]["action"] == "legacy_snapshot"
+    saved = client.get("/api/v1/helpdesk/runs/"+before["run_id"],headers=auth).json()
+    assert saved["result"]["evidence"] == before["evidence"]
+
+
+def test_knowledge_create_export_and_preview_have_no_run_side_effect(client,auth):
+    source={"code":"DNS-210","title":"DNS 终端解析排查","keywords":"DNS 网络 解析","content":"DNS 解析异常时，请先检查终端 DNS 服务器地址，记录解析错误信息，再提交网络支持工单。"}
+    source["content"] += "\r\n记录 DNS 检查结果。"
+    created=client.post("/api/v1/helpdesk/knowledge",headers=auth,json=source)
+    assert created.status_code==201 and created.json()["version"]==1
+    assert "\r" not in created.json()["content"]
+    assert client.post("/api/v1/helpdesk/knowledge",headers=auth,json=source).status_code==409
+    before=client.get("/api/v1/helpdesk/overview",headers=auth).json()
+    assert client.post("/api/v1/helpdesk/knowledge/search",headers=auth,json={"query":"DNS 解析异常怎么排查"}).status_code==200
+    after=client.get("/api/v1/helpdesk/overview",headers=auth).json()
+    assert before["runs"]==after["runs"] and before["open_tickets"]==after["open_tickets"]
+    export=client.get("/api/v1/helpdesk/knowledge/export",headers=auth).json()
+    assert export["format"]=="resolveai-knowledge-v1"
+    assert any(item["code"]==source["code"] for item in export["sources"])
+    assert "embedding" not in __import__('json').dumps(export)
+
+
+def test_knowledge_failure_rolls_back_index_and_version(client,auth,monkeypatch):
+    from app.helpdesk import knowledge
+    source=next(item for item in client.get("/api/v1/helpdesk/knowledge",headers=auth).json() if item["code"]=="DNS-210")
+    async def fail_index(*args,**kwargs): raise RuntimeError("simulated indexing failure")
+    monkeypatch.setattr(knowledge,"index_runbook",fail_index)
+    with pytest.raises(RuntimeError,match="simulated indexing failure"):
+        client.put("/api/v1/helpdesk/knowledge/DNS-210",headers=auth,json={**source,"expected_version":source["version"],"content":source["content"]+" 新检查步骤。"})
+    latest=next(item for item in client.get("/api/v1/helpdesk/knowledge",headers=auth).json() if item["code"]==source["code"])
+    assert latest["version"]==source["version"] and latest["content"]==source["content"]
+    assert any(item["code"]==source["code"] for item in client.get("/api/v1/helpdesk/runbooks",headers=auth).json())
+
+
+def test_knowledge_permissions_and_tenant_scope(client,auth):
+    login=client.post("/api/v1/auth/login",json={"email":"colleague@resolveai.example.com","password":"Colleague123!"})
+    colleague={"Authorization":"Bearer "+login.json()["access_token"]}
+    source=next(item for item in client.get("/api/v1/helpdesk/knowledge",headers=auth).json() if item["code"]=="DNS-210")
+    assert client.put("/api/v1/helpdesk/knowledge/DNS-210",headers=colleague,json={**source,"expected_version":source["version"]}).status_code==403
+    assert client.get("/api/v1/helpdesk/knowledge/export",headers=colleague).status_code==403
+    response=client.post("/api/v1/auth/register",json={"email":"knowledge@resolveai.example.com","password":"OtherTenant123!","full_name":"Other knowledge owner","tenant_name":"Knowledge","tenant_slug":"knowledge-"+uuid4().hex})
+    other={"Authorization":"Bearer "+response.json()["access_token"]}
+    assert client.get("/api/v1/helpdesk/knowledge",headers=other).json()==[]
+    assert client.get("/api/v1/helpdesk/knowledge/DNS-210/revisions",headers=other).status_code==404
+    assert client.get("/api/v1/helpdesk/knowledge").status_code==401
+
+
+def test_recover_abandoned_run_only_after_deadline_and_only_for_owner(client,auth):
+    from datetime import datetime,timedelta,timezone
+    from app.core.database import AsyncSessionLocal
+    from app.helpdesk.models import HelpdeskRun
+    owner=client.get("/api/v1/auth/me",headers=auth).json()
+    old_id,fresh_id=str(uuid4()),str(uuid4())
+    async def create_runs():
+        async with AsyncSessionLocal() as db:
+            for identity,age in [(old_id,300),(fresh_id,0)]:
+                db.add(HelpdeskRun(id=identity,tenant_id=owner["tenant_id"],user_id=owner["id"],question="测试超时运行恢复",result={"status":"running"},created_at=datetime.now(timezone.utc)-timedelta(seconds=age)))
+            await db.commit()
+    client.portal.call(create_runs)
+    assert client.post("/api/v1/helpdesk/runs/"+fresh_id+"/recover",headers=auth).status_code==409
+    response=client.post("/api/v1/helpdesk/runs/"+old_id+"/recover",headers=auth)
+    assert response.status_code==200 and response.json()["status"]=="interrupted"
+    assert client.post("/api/v1/helpdesk/runs/"+old_id+"/recover",headers=auth).status_code==409
+    login=client.post("/api/v1/auth/login",json={"email":"colleague@resolveai.example.com","password":"Colleague123!"})
+    colleague={"Authorization":"Bearer "+login.json()["access_token"]}
+    assert client.get("/api/v1/helpdesk/runs/"+old_id,headers=colleague).status_code==404
+    assert client.post("/api/v1/helpdesk/runs/"+fresh_id+"/recover",headers=colleague).status_code==404

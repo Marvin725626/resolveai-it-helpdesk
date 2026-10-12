@@ -175,11 +175,8 @@ async def runbooks(user: User = Depends(get_current_user), db=Depends(get_db)):
 async def add_runbook(data: RunbookRequest, user: User = Depends(get_current_user), db=Depends(get_db)):
     if user.role not in (UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN):
         raise HTTPException(403, "Only workspace administrators can add knowledge")
-    if await db.scalar(select(RunbookChunk.id).where(RunbookChunk.tenant_id == user.tenant_id, RunbookChunk.code == data.code)):
-        raise HTTPException(409, "Source code already exists")
-    count = await index_runbook(db, user.tenant_id, data.model_dump())
-    await db.commit()
-    return {"code": data.code, "chunks": count}
+    from app.helpdesk.knowledge import save_document
+    return await save_document(db, user, data.code, data.model_dump(), action="created")
 
 
 def ticket_dict(ticket, agent_name=None):

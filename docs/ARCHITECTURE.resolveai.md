@@ -47,3 +47,10 @@ The graph has no durable LangGraph checkpointer; durable final run records use S
 Run feedback is a current-user-only update to a completed run's JSON result. It preserves evidence/trace and stores the latest helpful/unhelpful response. Analytics reports actual response counts separately from evidence-gate rates; it does not infer satisfaction from lack of escalation.
 
 For shared deployment, add versioned database migrations, supported concurrency testing against PostgreSQL and operational retention controls. Current app events can still be changed by database administrators and are not a compliance-grade immutable log.
+
+
+## Knowledge lifecycle and run recovery (v1.2.0)
+
+KnowledgeRevision snapshots are unique by tenant/code/version. Source updates, previous-source deletion and regenerated vector/sparse chunks commit in one transaction. A legacy source starts at v0 and receives a baseline snapshot on its first actual edit; seed logic respects managed archived sources. Saved diagnosis evidence is never rewritten when a source changes.
+
+KnowledgePanel offers UTF-8 text import, version restoration, read-only retrieval preview and knowledge-only export. Pending run UUIDs are kept in tab-scoped sessionStorage; reconnect/reload reads the original owner-scoped result. Abandoned running records older than three minutes can be marked interrupted. This is final-result recovery and manual stale-record handling, not durable LangGraph checkpoint continuation.

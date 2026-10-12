@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.security import get_password_hash
-from app.helpdesk.models import RunbookChunk
+from app.helpdesk.models import RunbookChunk, KnowledgeRevision
 from app.helpdesk.retrieval import index_runbook
 from app.helpdesk.tools import DATA_DIR
 from app.models.tenant import Tenant
@@ -24,6 +24,7 @@ async def seed_demo():
                         hashed_password=get_password_hash("ResolveAI123!"), role=UserRole.TENANT_OWNER))
         for item in json.loads((DATA_DIR / "runbooks.json").read_text(encoding="utf-8")):
             existing = await db.scalar(select(RunbookChunk.id).where(RunbookChunk.tenant_id == tenant.id, RunbookChunk.code == item["code"]))
-            if not existing:
+            managed = await db.scalar(select(KnowledgeRevision.id).where(KnowledgeRevision.tenant_id == tenant.id, KnowledgeRevision.code == item["code"]).limit(1))
+            if not existing and not managed:
                 await index_runbook(db, tenant.id, item)
         await db.commit()

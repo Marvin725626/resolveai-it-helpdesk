@@ -51,3 +51,14 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 | CSV 格式与公式前缀 | `frontend/src/csv.ts` |
 
 验证结果见 [VALIDATION.md](VALIDATION.md)，复现流程见 [DEMO.md](DEMO.md)。未验证真实 LLM、Docker 或 PostgreSQL 集成，不声称生产部署效果。
+
+
+## 知识版本与运行恢复（v1.2.0）
+
+![知识编辑和版本快照](resolveai-knowledge-versions.png)
+
+![检索测试台](resolveai-retrieval-lab.png)
+
+![运行回看与重试入口](resolveai-run-history.png)
+
+新功能及真实验证边界见 [知识与恢复说明](KNOWLEDGE_AND_RECOVERY.md)。

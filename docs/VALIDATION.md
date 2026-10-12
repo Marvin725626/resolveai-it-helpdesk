@@ -4,7 +4,7 @@ Validated on 2026-10-12 in `E:\agent\resolveai`.
 
 - Python: isolated `.venv`, versions in `backend/requirements.lock.txt`.
 - Frontend: `npm run build` passes TypeScript checking and Vite production build.
-- Backend: 22 ResolveAI regression tests pass using a temporary SQLite database. Database engine disposal is verified by clean test exit.
+- Backend: 27 ResolveAI regression tests pass using a temporary SQLite database. Database engine disposal is verified by clean test exit.
 - Live API: six manually labelled scenarios run through the actual server; Recall@4 = 1.0, MRR = 1.0, escalation-decision accuracy = 1.0. This is a tiny offline smoke set, not production performance. Per-case results and actual latency are in locally generated `evaluation.local.json`.
 - Browser: demo sign-in; VPN diagnosis with source `[VPN-001]`; simulated degraded service creates a ticket; UI can take and resolve the ticket; the desktop layout and 390px responsive layout render without page overflow.
 - Service ports: frontend 5174 and backend 8104. Startup and stop scripts isolate processes by recorded PID and project command line.
@@ -31,3 +31,13 @@ This is still an offline development demonstration. Analytics values in screensh
 - Existing tables and the first project remain intact; startup creates only the new application-event table for local development. Historical tickets have no invented event backfill.
 
 The operation log is application-level, not a tamper-proof audit product. Target times are explicit demo policy using calendar hours without business-hour calendars or waiting-state pauses. No background email/Slack reminders or real enterprise operations were performed.
+
+
+## v1.2.0 verification · 2026-10-12
+
+- Backend: 27 passing tests covering version conflicts, archive/restore, preserved run evidence, rollback after indexing failure, tenant/admin scope, preview without runs/tickets, knowledge export, owner-only recovery and three-minute deadline checks.
+- Browser: real UTF-8 Markdown import; edit and reindex; stop retrieving archived sources; restore as a new version; actual JSON download; 390px editor without overflow.
+- Recovery: intercepted and dropped the actual stream response only after the real server finished diagnosis. UI retrieved the same persisted result; ticket count increased exactly once. Reload recovered the stored pending ID without resubmitting diagnosis.
+- New screenshots show actual developer sample sources and version events; repeated trial samples were archived with history preserved.
+
+No durable graph checkpointing or production deployment claims are added. Knowledge export is not a full database backup. Existing real-model/PostgreSQL/Docker validation limitations remain.

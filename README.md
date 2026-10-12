@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.1.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.1.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.2.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.2.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -44,13 +44,25 @@ flowchart LR
 - 工单搜索、状态 / 优先级 / 时限筛选与 CSV 导出；CSV 包含接手人和目标截止时间，处理中文、引号与公式前缀。
 - 诊断“有帮助 / 仍需帮助”反馈持久化，允许修改选择，看板统计实际反馈数量。
 - 当前接手人权限、状态机、带时间版本的更新冲突检测、备注请求防重复、备注脱敏；旧版接口不能绕过 ResolveAI 工单处理流程。
-- 22 项后端隔离回归测试、CSV 格式验证、可复用浏览器演示脚本，以及 6 个标注场景的本地评估脚本。
+- 27 项后端隔离回归测试、CSV 格式验证、可复用浏览器演示脚本，以及 6 个标注场景的本地评估脚本。
 
 ### 实际工单处理记录
 
 ![一次自动转人工、接手、备注、等待反馈、解决和关闭的真实本地操作记录](docs/resolveai-ticket-timeline.png)
 
 操作者与时间由后端记录。备注描述的是本地演示操作，未连接真实企业系统；升级前的工单不会补造历史记录。
+
+### 知识维护与运行恢复
+
+![知识版本管理、Markdown 导入与历史恢复](docs/resolveai-knowledge-versions.png)
+
+- 知识按来源管理：编辑、自动重建索引、停用 / 启用、最近 30 个版本，以及恢复历史内容为新版本。
+- 导入 UTF-8 Markdown / TXT（最大 64KB、正文最大 15000 字符），支持知识 JSON 导出。
+- 检索测试台使用同一混合检索引擎，展示候选来源、覆盖率与 RRF，不创建诊断或工单。
+- 编辑版本冲突返回 409；索引失败会回滚知识与索引；重启不会重新启用已停用的演示 SOP。
+- 断线后读取原请求结果；同一标签页刷新可以找回未确认结果。超过三分钟仍在 running 的记录可以手动标记中断，再使用新请求诊断。
+
+[知识管理与恢复说明](docs/KNOWLEDGE_AND_RECOVERY.md)包含 API、边界和实测步骤。
 
 ## 本机启动
 
