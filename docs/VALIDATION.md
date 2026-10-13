@@ -51,3 +51,13 @@ No durable graph checkpointing or production deployment claims are added. Knowle
 - Frontend: typecheck and production build; CSV formatting and formula handling; authored-module formatting. npm audit issues were remediated by a Vite patch, compatible dependency updates and removing an unnecessary affected plugin chain.
 
 These are development fixtures and local browser operations. They do not establish real customer volume, production business impact, semantic faithfulness or verified external-model/enterprise-system integration.
+
+
+## v1.4.0 verification · 2026-10-13
+
+- Backend: **39 passed**. New coverage includes assignment/release with preserved status and deadline, redacted event data, replay without duplicate mutation (including after a later release), stale-version rejection, finished-ticket/invalid-input rejection, fresh support-user role checks, foreign workspace and inactive-target rejection.
+- History: 237 synthetic notes plus the created event exist only in the disposable test database. Traversal starts with the latest 100 and prepends older cursor pages in exact sequence. Inserting a newer event after page one does not alter the older traversal; the terminal cursor and query bounds are checked.
+- Browser: the core diagnosis/feedback/ticket lifecycle and paged queue/history/report suites pass. A new UI diagnosis creates a dedicated demo ticket; the administrator assigns it, the script waits for real server commit and then drops the response, and the UI retries the frozen request without creating a second event. The UI then releases the ticket while retaining its status. Desktop and 390px screenshots show actual records; no page exception or horizontal overflow was observed.
+- Frontend: authored-module formatting and TypeScript/Vite production build pass. The existing page smoke now reads expected software version from package.json. Strict isolated offline evaluation is 16/16 for version 1.4.0.
+
+The long-history fixture is backend API coverage, not a claim of 237 real staff operations. The live browser check uses the existing demonstration administrator; it does not create fictional staff members or connect to enterprise systems. New screenshots are resolveai-assignment.png and resolveai-assignment-mobile.png. Original v1.3 integration limitations remain.

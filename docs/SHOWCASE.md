@@ -73,3 +73,12 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 ![运行检查](resolveai-readiness.png)
 
 详见 [分页与评估](PAGINATION_AND_EVALUATION.md)、[运维备份](OPERATIONS.md) 和 [功能状态](PROJECT_STATUS.md)。
+
+
+## 管理员交接与完整历史（v1.4.0）
+
+![真实分派、交接原因和处理事件](resolveai-assignment.png)
+
+<img src="resolveai-assignment-mobile.png" alt="390px 实际释放工单后的交接时间线" width="390" />
+
+工作区管理员可搜索启用成员并分派、转交或释放未完成工单；必须填写原因，版本冲突会要求重新读取当前工单。较早事件可继续分页加载，完整说明见 [工单协作](TICKET_WORKFLOW.md)。

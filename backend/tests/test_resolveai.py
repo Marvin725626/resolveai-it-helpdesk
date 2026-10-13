@@ -530,3 +530,162 @@ def test_sqlite_backup_preserves_data_and_refuses_overwrite_or_outside_path(tmp_
     with pytest.raises(ValueError):module.backup_database(original,original,tmp_path)
     with pytest.raises(ValueError):module.backup_database(original,tmp_path.parent/"outside.sqlite3",tmp_path)
     with sqlite3.connect(original) as db:assert db.execute("SELECT COUNT(*) FROM fixtures").fetchone()[0]==1
+
+
+def add_support_member(client, auth):
+    from app.core.database import AsyncSessionLocal
+    from app.core.security import create_access_token
+    from app.models.user import User, UserRole
+    owner = client.get("/api/v1/auth/me", headers=auth).json()
+    identity = str(uuid4())
+    async def insert_member():
+        async with AsyncSessionLocal() as db:
+            db.add(User(id=identity, tenant_id=owner["tenant_id"], email=f"support-{identity}@example.com",
+                hashed_password="unused-by-this-fixture", full_name="Isolated support fixture", role=UserRole.SUPPORT_AGENT, is_active=True))
+            await db.commit()
+    client.portal.call(insert_member)
+    token = create_access_token(subject=identity, tenant_id=owner["tenant_id"], role=UserRole.SUPPORT_AGENT.value)
+    return identity, {"Authorization": "Bearer " + token}
+
+
+def clear_test_rate_limit(client):
+    layer = client.app.middleware_stack
+    while layer is not None:
+        if layer.__class__.__name__ == "RateLimitMiddleware":
+            layer.request_history.clear()
+            layer.auth_history.clear()
+            return
+        layer = getattr(layer, "app", None)
+
+
+def test_assignment_is_idempotent_and_preserves_ticket_state(client, auth):
+    run = diagnose(client, auth, "VPN 认证超时需要管理员转交")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    before = client.get(path, headers=auth).json()
+    identity = str(uuid4())
+    request = {"request_id": identity, "agent_id": before["ticket"]["assigned_agent_id"] or client.get("/api/v1/auth/me", headers=auth).json()["id"],
+               "reason": "由管理员安排专人跟进 password=secret-fixture-4932", "expected_updated_at": before["ticket"]["updated_at"]}
+    first = client.post(path + "/assignment", headers=auth, json=request)
+    assert first.status_code == 200 and first.json()["cached"] is False
+    # A lost response can be retried after later mutations; idempotency is checked first.
+    assert client.post(path + "/assignment", headers=auth, json=request).json()["cached"] is True
+    assert client.post(path + "/assignment", headers=auth, json={**request, "reason": "另一项交接"}).status_code == 409
+    assigned = client.get(path, headers=auth).json()
+    assert assigned["ticket"]["status"] == before["ticket"]["status"]
+    assert assigned["ticket"]["sla"]["due_at"] == before["ticket"]["sla"]["due_at"]
+    changed = next(event for event in assigned["events"] if event["type"] == "assignment_changed")
+    assert changed["payload"]["reason"] == "由管理员安排专人跟进 password=[已脱敏]"
+    assert "secret-fixture-4932" not in str(changed["payload"])
+    noop = {**request, "request_id": str(uuid4()), "expected_updated_at": assigned["ticket"]["updated_at"]}
+    assert client.post(path + "/assignment", headers=auth, json=noop).status_code == 409
+    release = {"request_id": str(uuid4()), "agent_id": None, "reason": "暂时释放以重新分配", "expected_updated_at": assigned["ticket"]["updated_at"]}
+    released = client.post(path + "/assignment", headers=auth, json=release)
+    assert released.status_code == 200
+    after = client.get(path, headers=auth).json()
+    assert after["ticket"]["assigned_agent_id"] is None
+    assert after["ticket"]["status"] == before["ticket"]["status"]
+    assert sum(event["type"] == "assignment_changed" for event in after["events"]) == 2
+    assert client.post(path + "/assignment", headers=auth, json=request).json()["cached"] is True
+    assert client.get(path, headers=auth).json()["ticket"]["assigned_agent_id"] is None
+
+
+def test_assignment_scope_permissions_and_active_roster(client, auth):
+    run = diagnose(client, auth, "VPN 连不上需要工作区支持人员处理")
+    ticket_path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    ticket = client.get(ticket_path, headers=auth).json()["ticket"]
+    owner = client.get("/api/v1/auth/me", headers=auth).json()
+    listed = client.get("/api/v1/helpdesk/assignees", headers=auth)
+    assert listed.status_code == 200 and len(listed.json()["items"]) <= 50
+    assert all(item["id"] == owner["id"] or item["role"] in ("TENANT_OWNER", "TENANT_ADMIN", "SUPPORT_AGENT") for item in listed.json()["items"])
+    other = client.post("/api/v1/auth/register", json={"email": "assign-" + uuid4().hex + "@example.com", "password": "OtherTenant123!", "full_name": "Other workspace", "tenant_name": "Other", "tenant_slug": "assign-" + uuid4().hex})
+    assert other.status_code == 201
+    outsider_id = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer " + other.json()["access_token"]}).json()["id"]
+    request = {"request_id": str(uuid4()), "agent_id": outsider_id, "reason": "不允许跨工作区", "expected_updated_at": ticket["updated_at"]}
+    assert client.post(ticket_path + "/assignment", headers=auth, json=request).status_code == 404
+    _, agent_auth = add_support_member(client, auth)
+    assert client.get("/api/v1/helpdesk/assignees", headers=agent_auth).status_code == 403
+    assert client.post(ticket_path + "/assignment", headers=agent_auth, json=request).status_code == 403
+    assert client.post(ticket_path + "/assignment", headers={"Authorization": "Bearer " + other.json()["access_token"]}, json=request).status_code == 404
+    assert client.get("/api/v1/helpdesk/assignees").status_code == 401
+
+
+def test_event_history_cursor_traverses_more_than_two_hundred_stably(client, auth):
+    from app.core.database import AsyncSessionLocal
+    from app.helpdesk.models import HelpdeskTicketEvent
+    run = diagnose(client, auth, "网络问题需要支持，请查看历史记录")
+    ticket_id = run["ticket_id"]
+    owner = client.get("/api/v1/auth/me", headers=auth).json()
+    async def seed_events():
+        async with AsyncSessionLocal() as db:
+            ticket = await db.get(__import__("app.models.ticket", fromlist=["Ticket"]).Ticket, ticket_id)
+            stamp = ticket.created_at
+            for index in range(237):
+                db.add(HelpdeskTicketEvent(id=str(uuid4()), tenant_id=owner["tenant_id"], ticket_id=ticket_id,
+                    author_id=owner["id"], author_name="Cursor fixture", event_type="note", payload={"text": f"isolated {index}"}, created_at=stamp))
+            await db.commit()
+            rows = (await db.scalars(select(HelpdeskTicketEvent).where(HelpdeskTicketEvent.ticket_id == ticket_id).order_by(HelpdeskTicketEvent.sequence))).all()
+            return [row.id for row in rows]
+    from sqlalchemy import select
+    expected_ids = client.portal.call(seed_events)
+    path = f"/api/v1/helpdesk/tickets/{ticket_id}"
+    first = client.get(path, headers=auth).json()
+    assert first["event_count"] == 238 and len(first["events"]) == 100 and first["has_more"]
+    assert first["next_before"] is not None
+    async def insert_newer():
+        async with AsyncSessionLocal() as db:
+            db.add(HelpdeskTicketEvent(id=str(uuid4()), tenant_id=owner["tenant_id"], ticket_id=ticket_id,
+                author_id=owner["id"], author_name="Cursor fixture", event_type="note", payload={"text": "inserted after page one"}))
+            await db.commit()
+    client.portal.call(insert_newer)
+    seen = [event["id"] for event in first["events"]]
+    cursor = first["next_before"]
+    while cursor is not None:
+        page = client.get(path + "/events", headers=auth, params={"before": cursor, "page_size": 50})
+        assert page.status_code == 200
+        value = page.json()
+        seen = [event["id"] for event in value["events"]] + seen
+        cursor = value["next_before"]
+        assert value["has_more"] == (cursor is not None)
+    assert seen == expected_ids
+    assert client.get(path + "/events", headers=auth, params={"before": 0}).status_code == 422
+    assert client.get(path + "/events", headers=auth, params={"page_size": 101}).status_code == 422
+
+
+def test_assignment_stale_revision_finished_ticket_and_request_validation(client, auth):
+    clear_test_rate_limit(client)
+    run = diagnose(client, auth, "VPN 超时需要管理员分派支持")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    initial = client.get(path, headers=auth).json()
+    target_id, _ = add_support_member(client, auth)
+    base = {"request_id": str(uuid4()), "agent_id": target_id, "reason": "管理员安排专人排查", "expected_updated_at": initial["ticket"]["updated_at"]}
+    assert client.post(path + "/assignment", headers=auth, json={**base, "reason": " "}).status_code == 422
+    assert client.post(path + "/assignment", headers=auth, json={k: v for k, v in base.items() if k != "expected_updated_at"}).status_code == 422
+    assert client.patch(path, headers=auth, json={"status": "IN_PROGRESS", "expected_updated_at": initial["ticket"]["updated_at"]}).status_code == 200
+    stale = client.post(path + "/assignment", headers=auth, json=base)
+    assert stale.status_code == 409
+    detail = client.get(path, headers=auth).json()
+    assert detail["ticket"]["assigned_agent_id"] == client.get("/api/v1/auth/me", headers=auth).json()["id"]
+    assert not any(event["type"] == "assignment_changed" for event in detail["events"])
+    assert client.patch(path, headers=auth, json={"status": "RESOLVED"}).status_code == 200
+    current = client.get(path, headers=auth).json()["ticket"]
+    finished = {**base, "request_id": str(uuid4()), "expected_updated_at": current["updated_at"]}
+    assert client.post(path + "/assignment", headers=auth, json=finished).status_code == 409
+
+
+def test_assignment_rejects_inactive_same_workspace_target(client, auth):
+    clear_test_rate_limit(client)
+    from app.core.database import AsyncSessionLocal
+    from app.models.user import User
+    run = diagnose(client, auth, "VPN 连不上，提示认证超时，转人工排查")
+    path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
+    stamp = client.get(path, headers=auth).json()["ticket"]["updated_at"]
+    colleague_id, _ = add_support_member(client, auth)
+    async def deactivate():
+        async with AsyncSessionLocal() as db:
+            user = await db.get(User, colleague_id)
+            user.is_active = False
+            await db.commit()
+    client.portal.call(deactivate)
+    request = {"request_id": str(uuid4()), "agent_id": colleague_id, "reason": "分派给指定支持人员", "expected_updated_at": stamp}
+    assert client.post(path + "/assignment", headers=auth, json=request).status_code == 404
+    assert all(row["id"] != colleague_id for row in client.get("/api/v1/helpdesk/assignees", headers=auth).json()["items"])

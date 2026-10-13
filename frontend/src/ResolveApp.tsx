@@ -146,11 +146,13 @@ function App() {
     if (response.status === 401) logout();
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(
+      const error = new Error(
         typeof body.detail === "string"
           ? body.detail
           : `请求失败 (${response.status})`,
       );
+      Object.assign(error, { status: response.status });
+      throw error;
     }
     return response.json();
   }

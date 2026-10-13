@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.3.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.3.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.4.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.4.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -40,6 +40,7 @@ flowchart LR
 - 工作台时间按 Asia/Hong_Kong 显示；API 输出明确的 UTC 时间戳。
 - 运营看板：最近 7 / 30 / 90 天诊断趋势、转人工率、证据通过率、平均 / P95 耗时、问题分类与工单状态分布；支持指标 JSON 导出。
 - 工单接手到当前工程师、内部处理备注、自动保存的状态时间线，以及等待反馈 / 继续处理 / 解决 / 关闭 / 重新处理。
+- 管理员按实际工作区成员分派、转交和释放工单，必填交接原因、版本冲突保护和请求防重复；处理时间线可继续加载更早记录。
 - 按优先级计算的演示解决时限：即将超时、超时与按时完成提醒；自然小时计时，不暂停、不重置。
 - 工单搜索、状态 / 优先级 / 时限筛选与 CSV 导出；CSV 包含接手人和目标截止时间，处理中文、引号与公式前缀。
 - 诊断“有帮助 / 仍需帮助”反馈持久化，允许修改选择，看板统计实际反馈数量。
@@ -49,13 +50,19 @@ flowchart LR
 - 离线评估页面和 JSON 下载：16 个固定开发样本，使用独立临时数据库，CI 自动执行同一检查。
 - 运行检查：实际数据库查询、当前知识索引身份匹配、密钥配置状态（不返回密钥）。
 - SQLite 在线备份、完整性检查、拒绝覆盖原库与越界写入；备份仅保存到私有 `.local`。
-- 34 项后端隔离回归、CSV 格式验证、前端格式检查、真实浏览器回归、前端依赖审计。
+- 39 项后端隔离回归、CSV 格式验证、前端格式检查、真实浏览器回归、前端依赖审计。
 
 ### 实际工单处理记录
 
 ![一次自动转人工、接手、备注、等待反馈、解决和关闭的真实本地操作记录](docs/resolveai-ticket-timeline.png)
 
 操作者与时间由后端记录。备注描述的是本地演示操作，未连接真实企业系统；升级前的工单不会补造历史记录。
+
+### 管理员交接（v1.4.0）
+
+![管理员分派后的实际工单界面](docs/resolveai-assignment.png)
+
+分派与释放均写入实际处理记录。浏览器验证包括后端已提交但响应被丢弃，再用原请求重试且没有重复事件。更多规则见 [工单协作说明](docs/TICKET_WORKFLOW.md)。
 
 ### 知识维护与运行恢复
 

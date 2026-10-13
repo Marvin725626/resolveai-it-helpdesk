@@ -206,10 +206,16 @@ async def ticket_detail(ticket_id: UUID, user: User = Depends(get_current_user),
     ticket = await find_ticket(db, user, ticket_id)
     name = await db.scalar(select(User.full_name).where(User.id == ticket.assigned_agent_id, User.tenant_id == user.tenant_id)) if ticket.assigned_agent_id else None
     condition = (HelpdeskTicketEvent.ticket_id == ticket.id, HelpdeskTicketEvent.tenant_id == user.tenant_id)
-    events = (await db.scalars(select(HelpdeskTicketEvent).where(*condition).order_by(
-        HelpdeskTicketEvent.sequence.desc()).limit(100))).all()
+    # Fetch one sentinel row so a concurrent insert cannot make the cursor
+    # calculation depend on a separate COUNT query's snapshot.
+    events = list((await db.scalars(select(HelpdeskTicketEvent).where(*condition).order_by(
+        HelpdeskTicketEvent.sequence.desc()).limit(101))).all())
     count = await db.scalar(select(func.count()).select_from(HelpdeskTicketEvent).where(*condition))
+    has_more = len(events) > 100
+    events = events[:100]
     return {"ticket": ticket_dict(ticket, name), "event_count": count,
+        "can_manage_assignment": user.role in (UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN),
+        "has_more": has_more, "next_before": events[-1].sequence if has_more else None,
         "events": [{"id": event.id, "type": event.event_type, "author": event.author_name,
                     "payload": event.payload, "created_at": utc_time(event.created_at)} for event in reversed(events)]}
 

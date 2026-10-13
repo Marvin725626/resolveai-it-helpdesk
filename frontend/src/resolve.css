@@ -1745,6 +1745,34 @@ select:focus-visible {
   max-height: 20rem;
   font-size: 0.8rem;
 }
+.assignment-form {
+  margin: 1rem 0;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.025);
+}
+.assignment-form select,
+.assignment-form input {
+  width: 100%;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: inherit;
+  background: var(--panel);
+}
+.assignment-form > label + label,
+.assignment-form > label + small {
+  margin-top: 0.65rem;
+}
+.older-events {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+}
 .note-form > div {
   display: flex;
   align-items: center;
