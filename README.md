@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.4.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.4.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.5.0 版本说明](https://github.com/Marvin725626/resolveai-it-helpdesk/releases/tag/v1.5.0) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -41,6 +41,9 @@ flowchart LR
 - 运营看板：最近 7 / 30 / 90 天诊断趋势、转人工率、证据通过率、平均 / P95 耗时、问题分类与工单状态分布；支持指标 JSON 导出。
 - 工单接手到当前工程师、内部处理备注、自动保存的状态时间线，以及等待反馈 / 继续处理 / 解决 / 关闭 / 重新处理。
 - 管理员按实际工作区成员分派、转交和释放工单，必填交接原因、版本冲突保护和请求防重复；处理时间线可继续加载更早记录。
+- 工作区管理员可创建 48 小时有效的一次性成员邀请；邀请令牌只显示一次、数据库只存 SHA-256 摘要，支持撤销与使用状态追踪。
+- 受邀成员通过片段 URL 进入独立接受页，确认邀请邮箱并设置账号；新账号固定为支持专员，可登录并加入工单分派列表。
+- 管理入口按当前账号角色显示，邀请管理与成员列表均服务端校验租户及所有者 / 管理员权限。
 - 按优先级计算的演示解决时限：即将超时、超时与按时完成提醒；自然小时计时，不暂停、不重置。
 - 工单搜索、状态 / 优先级 / 时限筛选与 CSV 导出；CSV 包含接手人和目标截止时间，处理中文、引号与公式前缀。
 - 诊断“有帮助 / 仍需帮助”反馈持久化，允许修改选择，看板统计实际反馈数量。
@@ -50,7 +53,9 @@ flowchart LR
 - 离线评估页面和 JSON 下载：16 个固定开发样本，使用独立临时数据库，CI 自动执行同一检查。
 - 运行检查：实际数据库查询、当前知识索引身份匹配、密钥配置状态（不返回密钥）。
 - SQLite 在线备份、完整性检查、拒绝覆盖原库与越界写入；备份仅保存到私有 `.local`。
-- 39 项后端隔离回归、CSV 格式验证、前端格式检查、真实浏览器回归、前端依赖审计。
+- 43 项后端隔离回归、CSV 格式验证、前端格式检查、真实浏览器回归、前端依赖审计。
+
+邀请链接由管理员通过可信渠道手动发送；项目没有配置邮件发送服务，也不验证收件人实际控制该邮箱。请把它视为开发演示的 bearer 邀请凭证，不是企业身份验证或生产级邮件邀请系统。
 
 ### 实际工单处理记录
 
@@ -63,6 +68,14 @@ flowchart LR
 ![管理员分派后的实际工单界面](docs/resolveai-assignment.png)
 
 分派与释放均写入实际处理记录。浏览器验证包括后端已提交但响应被丢弃，再用原请求重试且没有重复事件。更多规则见 [工单协作说明](docs/TICKET_WORKFLOW.md)。
+
+### 工作区成员邀请（v1.5.0）
+
+![隔离浏览器验收的工作区成员与邀请状态](docs/resolveai-team-invitations.png)
+
+工作区所有者和管理员可以生成一次性支持专员邀请链接、复制并手动发送，检查成员 / 邀请状态以及撤销未使用的邀请。新成员接受后以自己的账号进入当前工作区，自动出现在分派选项中。令牌保存在 URL 片段中，并在邀请页读取后立即从地址栏移除。
+
+系统不会发送邮件或验证邮箱归属；链接持有者可以尝试接受邀请，因此管理员应只通过可信渠道分享，并把该流程作为本地演示功能使用。实现与限制见 [团队邀请说明](docs/TEAM_INVITATIONS.md)。
 
 ### 知识维护与运行恢复
 
@@ -95,8 +108,7 @@ cd E:\agent\resolveai
 
 - 工作台：http://127.0.0.1:5174
 - API 文档：http://127.0.0.1:8104/docs
-- 演示邮箱：`demo@resolveai.example.com`
-- 演示密码：`ResolveAI123!`
+- 本地演示账号由 backend/.env 中的 IT_DEMO_PASSWORD 配置；请自行设置，不要提交该文件。
 
 停止本项目进程：
 
@@ -117,7 +129,7 @@ cd frontend
 npm ci
 cd ..
 Copy-Item backend\.env.example.resolveai backend\.env
-# 将 AUTH_SECRET 改成随机值后启动。
+# 设置随机 AUTH_SECRET 和本地 IT_DEMO_PASSWORD 后启动。
 .\start.ps1
 ```
 

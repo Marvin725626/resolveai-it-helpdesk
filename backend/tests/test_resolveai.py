@@ -13,6 +13,7 @@ os.environ["DEFAULT_LLM_PROVIDER"] = "mock"
 os.environ["IT_EMBEDDING_PROVIDER"] = "local"
 os.environ["APP_ENV"] = "development"
 os.environ["IT_DEMO_ENABLED"] = "true"
+os.environ["IT_DEMO_PASSWORD"] = "ResolveAI-Test-Only-123!"
 
 from app.main import app
 
@@ -25,7 +26,7 @@ def client():
 
 @pytest.fixture(scope="module")
 def auth(client):
-    response = client.post("/api/v1/auth/login", json={"email": "demo@resolveai.example.com", "password": "ResolveAI123!"})
+    response = client.post("/api/v1/auth/login", json={"email": "demo@resolveai.example.com", "password": os.environ["IT_DEMO_PASSWORD"]})
     assert response.status_code == 200
     return {"Authorization": "Bearer " + response.json()["access_token"]}
 

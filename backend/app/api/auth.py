@@ -4,8 +4,9 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 from app.core.database import get_db
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.token_blacklist import revoke_token
@@ -36,7 +37,8 @@ async def register_tenant_and_owner(data: UserCreate, request: Request, db: Asyn
         )
 
     # Check if email is already in use
-    existing_user = await db.execute(select(User).where(User.email == data.email))
+    normalized_email = str(data.email).strip().lower()
+    existing_user = await db.execute(select(User).where(func.lower(User.email) == normalized_email))
     if existing_user.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -55,13 +57,17 @@ async def register_tenant_and_owner(data: UserCreate, request: Request, db: Asyn
     # Create Owner User
     user = User(
         tenant_id=tenant.id,
-        email=data.email,
+        email=normalized_email,
         hashed_password=get_password_hash(data.password),
         full_name=data.full_name,
         role=UserRole.TENANT_OWNER
     )
     db.add(user)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An account with this email address already exists.")
 
     # Audit log
     client_ip = request.client.host if request.client else "unknown"
@@ -78,7 +84,11 @@ async def register_tenant_and_owner(data: UserCreate, request: Request, db: Asyn
         user_agent=user_agent,
         details={"tenant_name": tenant.name, "slug": tenant.slug}
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="An account with this email address already exists.")
     await db.refresh(user)
 
     token = create_access_token(
@@ -103,7 +113,7 @@ async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(ge
     client_ip = request.client.host if request.client else "unknown"
     user_agent = request.headers.get("user-agent", "unknown")
 
-    stmt = select(User).where(User.email == data.email)
+    stmt = select(User).where(func.lower(User.email) == str(data.email).strip().lower())
     result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
@@ -261,19 +271,17 @@ async def seed_demo_tenant(db: AsyncSession = Depends(get_db)):
     existing_tenant_res = await db.execute(select(Tenant).where(Tenant.slug == demo_slug))
     existing_tenant = existing_tenant_res.scalar_one_or_none()
 
+
     if existing_tenant:
-        # Return existing demo credentials
+        # Return existing demo workspace metadata
         stmt_user = select(User).where(User.tenant_id == existing_tenant.id)
         user_res = await db.execute(stmt_user)
         demo_user = user_res.scalars().first()
-        token = create_access_token(subject=demo_user.id, tenant_id=existing_tenant.id, role=demo_user.role.value)
         return {
             "message": "Demo tenant already provisioned.",
             "tenant_id": existing_tenant.id,
             "widget_key": existing_tenant.widget_key,
             "demo_email": demo_user.email,
-            "demo_password": "Password123!",
-            "access_token": token
         }
 
     # 1. Create Acme Tenant
@@ -289,7 +297,7 @@ async def seed_demo_tenant(db: AsyncSession = Depends(get_db)):
     demo_user = User(
         tenant_id=acme_tenant.id,
         email="admin@acmestore.com",
-        hashed_password=get_password_hash("Password123!"),
+        hashed_password=get_password_hash(settings.IT_DEMO_PASSWORD),
         full_name="Sarah Khan (Support Lead)",
         role=UserRole.TENANT_OWNER
     )
@@ -411,12 +419,9 @@ async def seed_demo_tenant(db: AsyncSession = Depends(get_db)):
 
     await db.commit()
 
-    token = create_access_token(subject=demo_user.id, tenant_id=acme_tenant.id, role=demo_user.role.value)
     return {
         "message": "Demo tenant 'Acme Store' provisioned successfully.",
         "tenant_id": acme_tenant.id,
         "widget_key": acme_tenant.widget_key,
         "demo_email": demo_user.email,
-        "demo_password": "Password123!",
-        "access_token": token
     }

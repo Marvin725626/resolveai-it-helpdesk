@@ -61,3 +61,15 @@ These are development fixtures and local browser operations. They do not establi
 - Frontend: authored-module formatting and TypeScript/Vite production build pass. The existing page smoke now reads expected software version from package.json. Strict isolated offline evaluation is 16/16 for version 1.4.0.
 
 The long-history fixture is backend API coverage, not a claim of 237 real staff operations. The live browser check uses the existing demonstration administrator; it does not create fictional staff members or connect to enterprise systems. New screenshots are resolveai-assignment.png and resolveai-assignment-mobile.png. Original v1.3 integration limitations remain.
+
+
+## v1.5.0 verification · 2026-10-14
+
+- Backend: **43 passed** across the existing helpdesk suite and invitation API tests. Invitation coverage includes SHA-256-only persistence, manager-only operations, fixed support-agent role, case-insensitive login, revoke, expiry, replay, cross-workspace isolation and simultaneous acceptance.
+- Schema: the invitation Alembic revision adds the invitation table and case-insensitive unique email index; local bootstrap checks for the expression index explicitly because SQLite does not reflect it reliably.
+- Frontend: TypeScript/Vite production build passes. The new team page and invitation acceptance page are included in authored-module formatting checks.
+- Browser: isolated temporary workspace; owner created a one-time invite, a second browser context accepted it with its own credentials, the fragment was removed before follow-up requests, the new account reported `SUPPORT_AGENT`, and the owner saw it in the assignment API. The 390px team page has no document overflow. Screenshots use a disposable database and synthetic `example.com` identities; the active bearer link was removed before capture.
+- Repeatable browser entry point: `scripts/smoke-invitations.cjs`; the temporary services and database used for this run were stopped and removed after verification.
+- Limits: invite links are manually delivered, are not email-verified, and are bearer credentials. No email delivery or identity-provider integration is configured.
+
+The 43 passing backend tests are isolated development regressions; they do not validate PostgreSQL concurrency, production mail delivery or external identity verification.

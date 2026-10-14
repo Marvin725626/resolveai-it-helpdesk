@@ -10,20 +10,23 @@ import tempfile
 from uuid import uuid4
 
 def main():
+    demo_password = os.environ.get("IT_DEMO_PASSWORD")
+    if not demo_password:
+        raise RuntimeError("Set IT_DEMO_PASSWORD before running the isolated demo evaluation.")
     parser=argparse.ArgumentParser();parser.add_argument("--strict",action="store_true");parser.add_argument("--output",default="docs/evaluation.offline.json");args=parser.parse_args()
     root=Path(__file__).resolve().parents[1]
     cases=json.loads((root/"backend/data/eval_cases.json").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory(prefix="resolveai-eval-") as directory:
         os.environ.update({"DATABASE_URL":"sqlite+aiosqlite:///"+(Path(directory)/"eval.db").as_posix(),
             "DEFAULT_LLM_PROVIDER":"mock","IT_EMBEDDING_PROVIDER":"local","IT_EMBEDDING_DIMENSION":"256",
-            "APP_ENV":"development","IT_DEMO_ENABLED":"true","AUTH_SECRET":uuid4().hex+uuid4().hex})
+            "APP_ENV":"development","IT_DEMO_ENABLED":"true","IT_DEMO_PASSWORD":demo_password,"AUTH_SECRET":uuid4().hex+uuid4().hex})
         os.environ.pop("OPENAI_API_KEY",None)
         sys.path.insert(0,str(root/"backend"))
         from fastapi.testclient import TestClient
         from app.main import app
         rows=[]
         with TestClient(app) as client:
-            login=client.post("/api/v1/auth/login",json={"email":"demo@resolveai.example.com","password":"ResolveAI123!"});login.raise_for_status()
+            login=client.post("/api/v1/auth/login",json={"email":"demo@resolveai.example.com","password":demo_password});login.raise_for_status()
             headers={"Authorization":"Bearer "+login.json()["access_token"]}
             for case in cases:
                 response=client.post("/api/v1/helpdesk/runs",headers=headers,json={"request_id":str(uuid4()),"question":case["question"]});response.raise_for_status();run=response.json()

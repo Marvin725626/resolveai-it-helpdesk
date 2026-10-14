@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     IT_MAX_RETRIEVAL_ATTEMPTS: int = 2
     IT_EVIDENCE_THRESHOLD: float = 0.12
     IT_DEMO_ENABLED: bool = True
+    IT_DEMO_PASSWORD: str = ""
 
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-1.5-flash"

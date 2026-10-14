@@ -1,6 +1,7 @@
 """Small labelled smoke evaluation, not a production quality benchmark."""
 import argparse
 import json
+import os
 import statistics
 import urllib.request
 from pathlib import Path
@@ -26,7 +27,10 @@ def main():
             headers={"Content-Type": "application/json", **({"Authorization": "Bearer " + token} if token else {})})
         with urllib.request.urlopen(req, timeout=110) as response:
             return json.load(response)
-    token = post("/auth/login", {"email": "demo@resolveai.example.com", "password": "ResolveAI123!"})["access_token"]
+    demo_password = os.environ.get("IT_DEMO_PASSWORD")
+    if not demo_password:
+        raise RuntimeError("Set IT_DEMO_PASSWORD before running the demo evaluation.")
+    token = post("/auth/login", {"email": "demo@resolveai.example.com", "password": demo_password})["access_token"]
     results = []
     for question, expected, escalation in CASES:
         run = post("/helpdesk/runs", {"question": question, "request_id": str(uuid4())}, token)

@@ -12,7 +12,7 @@ from app.models.user import User, UserRole
 
 
 async def seed_demo():
-    if settings.APP_ENV != "development" or not settings.IT_DEMO_ENABLED:
+    if settings.APP_ENV != "development" or not settings.IT_DEMO_ENABLED or not settings.IT_DEMO_PASSWORD:
         return
     async with AsyncSessionLocal() as db:
         tenant = await db.scalar(select(Tenant).where(Tenant.slug == "resolveai-demo"))
@@ -21,7 +21,7 @@ async def seed_demo():
             db.add(tenant)
             await db.flush()
             db.add(User(tenant_id=tenant.id, email="demo@resolveai.example.com", full_name="演示支持工程师",
-                        hashed_password=get_password_hash("ResolveAI123!"), role=UserRole.TENANT_OWNER))
+                        hashed_password=get_password_hash(settings.IT_DEMO_PASSWORD), role=UserRole.TENANT_OWNER))
         for item in json.loads((DATA_DIR / "runbooks.json").read_text(encoding="utf-8")):
             existing = await db.scalar(select(RunbookChunk.id).where(RunbookChunk.tenant_id == tenant.id, RunbookChunk.code == item["code"]))
             managed = await db.scalar(select(KnowledgeRevision.id).where(KnowledgeRevision.tenant_id == tenant.id, KnowledgeRevision.code == item["code"]).limit(1))

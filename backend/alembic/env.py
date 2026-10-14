@@ -29,6 +29,7 @@ from app.core.config import settings
 from app.core.database import Base
 import app.models.tenant  # noqa
 import app.models.user  # noqa
+import app.models.invitation  # noqa
 import app.models.customer  # noqa
 import app.models.conversation  # noqa
 import app.models.document  # noqa

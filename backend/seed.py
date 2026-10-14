@@ -23,6 +23,8 @@ from app.core.config import settings
 import json
 
 async def run_seed():
+    if not settings.IT_DEMO_PASSWORD:
+        raise RuntimeError("Set IT_DEMO_PASSWORD in the local environment before seeding demo users.")
     print("=" * 60)
     print("  Initializing AI SupportPro Database & Seeding Demo")
     print("=" * 60)
@@ -49,7 +51,7 @@ async def run_seed():
             user = User(
                 tenant_id=tenant.id,
                 email="admin@acmestore.com",
-                hashed_password=get_password_hash("Password123!"),
+                hashed_password=get_password_hash(settings.IT_DEMO_PASSWORD),
                 full_name="Sarah Khan (Support Lead)",
                 role=UserRole.TENANT_OWNER
             )
@@ -145,7 +147,7 @@ async def run_seed():
         await db.commit()
         print("\n[SUCCESS] Seeding complete!")
         print(f"  Login Email:    admin@acmestore.com")
-        print(f"  Login Password: Password123!")
+        print("  Login Password: configured locally via IT_DEMO_PASSWORD")
         print(f"  Widget Key:     {tenant.widget_key}")
         print("=" * 60)
 

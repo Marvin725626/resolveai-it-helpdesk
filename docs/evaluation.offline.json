@@ -1,6 +1,6 @@
 {
-  "software_version": "1.4.0",
-  "generated_at": "2026-10-13T12:22:05.188691+00:00",
+  "software_version": "1.5.0",
+  "generated_at": "2026-10-14T15:38:20.247899+00:00",
   "scope": "16 manually labelled offline development fixtures; isolated SQLite database, rule routing, hash embeddings and simulated tools",
   "real_model_calls": false,
   "production_business_impact": "not measured",
@@ -11,7 +11,7 @@
   "mrr": 1.0,
   "escalation_accuracy": 1,
   "category_accuracy": 1,
-  "latency_ms_mean": 19.75,
+  "latency_ms_mean": 24.15,
   "cases": [
     {
       "id": "vpn-timeout",
@@ -27,7 +27,7 @@
       "category": "vpn",
       "escalate": true,
       "supported": true,
-      "latency_ms": 38.4,
+      "latency_ms": 43.1,
       "checks": {
         "category": true,
         "escalation": true,
@@ -53,7 +53,7 @@
       "category": "vpn",
       "escalate": true,
       "supported": true,
-      "latency_ms": 22.86,
+      "latency_ms": 23.57,
       "checks": {
         "category": true,
         "escalation": true,
@@ -79,7 +79,7 @@
       "category": "account",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.39,
+      "latency_ms": 19.66,
       "checks": {
         "category": true,
         "escalation": true,
@@ -105,7 +105,7 @@
       "category": "account",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.36,
+      "latency_ms": 18.11,
       "checks": {
         "category": true,
         "escalation": true,
@@ -131,7 +131,7 @@
       "category": "software",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.75,
+      "latency_ms": 17.33,
       "checks": {
         "category": true,
         "escalation": true,
@@ -157,7 +157,7 @@
       "category": "software",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.3,
+      "latency_ms": 23.03,
       "checks": {
         "category": true,
         "escalation": true,
@@ -183,7 +183,7 @@
       "category": "service",
       "escalate": false,
       "supported": true,
-      "latency_ms": 16.29,
+      "latency_ms": 20.22,
       "checks": {
         "category": true,
         "escalation": true,
@@ -209,7 +209,7 @@
       "category": "service",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.34,
+      "latency_ms": 17.18,
       "checks": {
         "category": true,
         "escalation": true,
@@ -235,7 +235,7 @@
       "category": "email",
       "escalate": false,
       "supported": true,
-      "latency_ms": 14.65,
+      "latency_ms": 19.83,
       "checks": {
         "category": true,
         "escalation": true,
@@ -261,7 +261,7 @@
       "category": "email",
       "escalate": false,
       "supported": true,
-      "latency_ms": 14.87,
+      "latency_ms": 17.81,
       "checks": {
         "category": true,
         "escalation": true,
@@ -287,7 +287,7 @@
       "category": "account",
       "escalate": true,
       "supported": true,
-      "latency_ms": 20.95,
+      "latency_ms": 25.99,
       "checks": {
         "category": true,
         "escalation": true,
@@ -313,7 +313,7 @@
       "category": "account",
       "escalate": true,
       "supported": true,
-      "latency_ms": 21.42,
+      "latency_ms": 27.5,
       "checks": {
         "category": true,
         "escalation": true,
@@ -339,7 +339,7 @@
       "category": "account",
       "escalate": false,
       "supported": true,
-      "latency_ms": 15.26,
+      "latency_ms": 19.42,
       "checks": {
         "category": true,
         "escalation": true,
@@ -365,7 +365,7 @@
       "category": "unknown",
       "escalate": true,
       "supported": false,
-      "latency_ms": 24.59,
+      "latency_ms": 30.08,
       "checks": {
         "category": true,
         "escalation": true,
@@ -391,7 +391,7 @@
       "category": "unknown",
       "escalate": true,
       "supported": false,
-      "latency_ms": 24.36,
+      "latency_ms": 31.32,
       "checks": {
         "category": true,
         "escalation": true,
@@ -417,7 +417,7 @@
       "category": "unknown",
       "escalate": true,
       "supported": false,
-      "latency_ms": 25.23,
+      "latency_ms": 32.31,
       "checks": {
         "category": true,
         "escalation": true,

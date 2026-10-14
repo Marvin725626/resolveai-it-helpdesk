@@ -3,6 +3,7 @@ import pytest_asyncio
 import httpx
 from app.main import app
 from app.core.database import init_db
+from app.core.config import settings
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -34,11 +35,13 @@ async def test_seed_demo_tenant_and_login():
         seed_data = seed_resp.json()
         assert "widget_key" in seed_data
         assert seed_data["demo_email"] == "admin@acmestore.com"
+        assert "demo_password" not in seed_data
+        assert "access_token" not in seed_data
 
         # Login with demo user
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         assert login_resp.status_code == 200
         token_data = login_resp.json()
@@ -98,7 +101,7 @@ async def test_multi_tenant_isolation():
         # Register Tenant A
         reg_a = await client.post("/api/v1/auth/register", json={
             "email": f"owner_{uid}@tenanta.com",
-            "password": "Password123!",
+            "password": settings.IT_DEMO_PASSWORD,
             "full_name": "Owner A",
             "tenant_name": f"Company Alpha {uid}",
             "tenant_slug": f"company-alpha-{uid}"
@@ -109,7 +112,7 @@ async def test_multi_tenant_isolation():
         # Register Tenant B
         reg_b = await client.post("/api/v1/auth/register", json={
             "email": f"owner_{uid}@tenantb.com",
-            "password": "Password123!",
+            "password": settings.IT_DEMO_PASSWORD,
             "full_name": "Owner B",
             "tenant_name": f"Company Beta {uid}",
             "tenant_slug": f"company-beta-{uid}"
@@ -171,7 +174,7 @@ async def test_ticket_lifecycle_and_notes():
         # Login as demo owner
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -294,7 +297,7 @@ async def test_token_revocation_logout():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -322,7 +325,7 @@ async def test_magic_byte_file_upload_validation():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -356,7 +359,7 @@ async def test_audit_logging_and_query():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         token = login_resp.json()["access_token"]
         headers = {"Authorization": f"Bearer {token}"}
@@ -459,7 +462,7 @@ async def test_portal_dashboard_authorized_by_jwt():
         # Login
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         assert login_resp.status_code == 200
         token = login_resp.json()["access_token"]
@@ -479,7 +482,7 @@ async def test_portal_cross_tenant_spoofing_rejected():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         login_resp = await client.post("/api/v1/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         token = login_resp.json()["access_token"]
 
@@ -517,7 +520,7 @@ async def test_portal_auth_login_and_logout():
         # Portal login
         login_resp = await client.post("/api/auth/login", json={
             "email": "admin@acmestore.com",
-            "password": "Password123!"
+            "password": settings.IT_DEMO_PASSWORD
         })
         assert login_resp.status_code == 200
         token_data = login_resp.json()
@@ -573,7 +576,7 @@ async def test_duplicate_file_upload_detection_and_normalization():
             "tenant_name": f"Upload Corp {uid}",
             "tenant_slug": f"upload-corp-{uid}",
             "email": f"uploader_{uid}@test.com",
-            "password": "Password123!",
+            "password": settings.IT_DEMO_PASSWORD,
             "full_name": "Uploader Admin"
         })
         assert reg_resp.status_code == 201

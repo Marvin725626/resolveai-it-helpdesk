@@ -53,7 +53,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         window_start = now - 60.0  # 1 minute sliding window
 
         # Check strict auth endpoints
-        if "/auth/login" in path or "/auth/register" in path:
+        if "/auth/login" in path or "/auth/register" in path or "/auth/invitations/" in path:
             recent_auth = [t for t in self.auth_history[client_ip] if t > window_start]
             if len(recent_auth) >= 25:
                 return JSONResponse(

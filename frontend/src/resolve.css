@@ -2129,3 +2129,105 @@ select:focus-visible {
     flex-direction: column;
   }
 }
+.team-page {
+  display: grid;
+  gap: 1rem;
+}
+.team-page .panel {
+  min-width: 0;
+}
+.team-page .panel-title {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.team-page .panel-title > div {
+  flex: 1;
+}
+.team-table-wrap {
+  overflow-x: auto;
+  margin-top: 1rem;
+}
+.team-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  text-align: left;
+}
+.team-table th,
+.team-table td {
+  padding: 0.75rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.team-table th {
+  color: #667987;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.team-table td {
+  color: #304653;
+}
+.team-invite-form {
+  margin-top: 1rem;
+}
+.team-invite-form > label,
+.invite-link-box > label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #607482;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.team-invite-controls {
+  display: flex;
+  gap: 0.6rem;
+}
+.team-invite-controls input {
+  min-width: 0;
+  flex: 1;
+}
+.team-invite-controls button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+.team-invite-panel .config-note {
+  margin-top: 1rem;
+}
+.team-invite-panel .config-note p {
+  margin-top: 0.35rem;
+}
+.invite-link-box {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #b9deda;
+  border-radius: 0.7rem;
+  background: #f2f9f8;
+}
+.invite-link-box small {
+  display: block;
+  margin-top: 0.45rem;
+  color: #627482;
+}
+.danger-button {
+  color: #ad4139;
+}
+.invite-screen .invite-password-hint {
+  color: #627482;
+  font-size: 0.75rem;
+  margin: -0.4rem 0 0.8rem;
+}
+@media (max-width: 650px) {
+  .team-invite-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .team-table {
+    font-size: 0.72rem;
+  }
+}

@@ -4,6 +4,7 @@ import RunHistory from "./RunHistory";
 import ReadinessPanel from "./ReadinessPanel";
 import KnowledgePanel from "./KnowledgePanel";
 import AnalyticsPanel from "./AnalyticsPanel";
+import TeamPage from "./TeamPage";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
@@ -22,6 +23,7 @@ import {
   Send,
   ShieldCheck,
   Ticket,
+  Users,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -79,7 +81,8 @@ type View =
   | "tickets"
   | "knowledge"
   | "history"
-  | "settings";
+  | "settings"
+  | "team";
 const nav = [
   { id: "analytics", label: "运营看板", icon: Activity },
   { id: "diagnose", label: "智能诊断", icon: MessageSquare },
@@ -88,6 +91,7 @@ const nav = [
   { id: "history", label: "运行记录", icon: History },
   { id: "evaluation", label: "离线评估", icon: Activity },
   { id: "settings", label: "运行配置", icon: Cpu },
+  { id: "team", label: "团队管理", icon: Users },
 ] as const;
 const examples = [
   { tag: "VPN / 网络", text: "VPN 连不上，提示认证超时，怎么排查？" },
@@ -114,6 +118,11 @@ function App() {
   );
   const [view, setView] = useState<View>("diagnose");
   const [overview, setOverview] = useState<Overview>();
+  const [currentUser, setCurrentUser] = useState<{
+    role: string;
+    full_name: string;
+    email: string;
+  }>();
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -121,8 +130,8 @@ function App() {
   const [trace, setTrace] = useState<Trace[]>([]);
   const [feedbackBusy, setFeedbackBusy] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
-  const [email, setEmail] = useState("demo@resolveai.example.com");
-  const [password, setPassword] = useState("ResolveAI123!");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const abort = useRef<AbortController | undefined>(undefined);
 
   function logout() {
@@ -130,6 +139,7 @@ function App() {
     localStorage.removeItem("resolveai_token");
     sessionStorage.removeItem("resolveai_pending_run");
     setToken("");
+    setCurrentUser(undefined);
     setOverview(undefined);
     setResult(undefined);
     setTrace([]);
@@ -162,6 +172,9 @@ function App() {
   useEffect(() => {
     if (token) {
       refresh().catch((e) => setError(e.message));
+      api<{ role: string; full_name: string; email: string }>("/auth/me")
+        .then(setCurrentUser)
+        .catch(() => setCurrentUser(undefined));
       const pending = sessionStorage.getItem("resolveai_pending_run");
       if (pending)
         api<{ question: string; result: Run }>(`/helpdesk/runs/${pending}`)
@@ -407,7 +420,7 @@ function App() {
               <div>
                 <strong>本地演示环境</strong>
                 <span>
-                  预填账号仅用于本地测试。账号及服务检查使用模拟数据。
+                  请填写本地开发环境中配置的账号。账号及服务检查使用模拟数据。
                 </span>
               </div>
             </div>
@@ -437,25 +450,33 @@ function App() {
         </div>
         <p className="nav-caption">工作台</p>
         <nav aria-label="工作台导航">
-          {nav.map((item) => (
-            <button
-              key={item.id}
-              className={view === item.id ? "nav-item active" : "nav-item"}
-              aria-current={view === item.id ? "page" : undefined}
-              onClick={() => {
-                setView(item.id);
-                setError("");
-              }}
-            >
-              <item.icon size={19} />
-              {item.label}
-              {item.id === "tickets" &&
-                overview &&
-                overview.open_tickets > 0 && (
-                  <span className="nav-count">{overview.open_tickets}</span>
-                )}
-            </button>
-          ))}
+          {nav
+            .filter(
+              (item) =>
+                item.id !== "team" ||
+                ["TENANT_OWNER", "TENANT_ADMIN"].includes(
+                  currentUser?.role || "",
+                ),
+            )
+            .map((item) => (
+              <button
+                key={item.id}
+                className={view === item.id ? "nav-item active" : "nav-item"}
+                aria-current={view === item.id ? "page" : undefined}
+                onClick={() => {
+                  setView(item.id);
+                  setError("");
+                }}
+              >
+                <item.icon size={19} />
+                {item.label}
+                {item.id === "tickets" &&
+                  overview &&
+                  overview.open_tickets > 0 && (
+                    <span className="nav-count">{overview.open_tickets}</span>
+                  )}
+              </button>
+            ))}
         </nav>
         <div className="sidebar-bottom">
           <div className="sidebar-note">
@@ -888,6 +909,11 @@ function App() {
             />
           )}
           {view === "evaluation" && <EvaluationPanel api={api} />}
+          {view === "team" &&
+            currentUser &&
+            ["TENANT_OWNER", "TENANT_ADMIN"].includes(currentUser.role) && (
+              <TeamPage api={api} />
+            )}
           {view === "settings" && <ReadinessPanel api={api} />}
           {view === "settings" && (
             <section className="panel settings-panel">

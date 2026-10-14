@@ -5,6 +5,7 @@ from app.core.config import settings
 from app.core.database import init_db, engine
 from app.core.middleware import SecurityHeadersMiddleware, RateLimitMiddleware
 from app.api.auth import router as auth_router
+from app.api.invitations import router as invitations_router
 from app.api.tenants import router as tenants_router
 from app.api.knowledge import router as knowledge_router
 from app.api.chat import router as chat_router
@@ -37,7 +38,7 @@ app = FastAPI(
         "ResolveAI IT HelpDesk demo based on AI SupportPro. "
         "LangGraph diagnosis, hybrid retrieval, evidence, simulated read-only tools, and ticket handoff."
     ),
-    version="1.4.0",
+    version="1.5.0",
     lifespan=lifespan
 )
 
@@ -59,6 +60,7 @@ app.add_middleware(
 # Register routers
 app.include_router(health_router, prefix=settings.API_V1_STR)
 app.include_router(auth_router, prefix=settings.API_V1_STR)
+app.include_router(invitations_router, prefix=settings.API_V1_STR)
 app.include_router(tenants_router, prefix=settings.API_V1_STR)
 app.include_router(knowledge_router, prefix=settings.API_V1_STR)
 app.include_router(chat_router, prefix=settings.API_V1_STR)
@@ -78,7 +80,7 @@ async def root():
     return {
         "app": settings.APP_NAME,
         "tagline": "IT support with evidence and traceable handoff.",
-        "version": "1.4.0",
+        "version": "1.5.0",
         "docs_url": "/docs",
         "api_prefix": settings.API_V1_STR,
         "status": "operational"

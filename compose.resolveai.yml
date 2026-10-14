@@ -22,6 +22,7 @@ services:
       IT_EMBEDDING_PROVIDER: local
       IT_EMBEDDING_DIMENSION: 256
       IT_DEMO_ENABLED: "true"
+      IT_DEMO_PASSWORD: ${IT_DEMO_PASSWORD:?Set IT_DEMO_PASSWORD in a root .env before using Docker}
     ports:
       - "127.0.0.1:8104:8000"
     depends_on:

@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from app.core.database import get_db
 from app.core.config import settings
@@ -1254,7 +1255,11 @@ async def update_user_profile(
         current_user.full_name = body["name"].strip()
     if "email" in body and body["email"].strip():
         current_user.email = body["email"].strip().lower()
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
     await db.refresh(current_user)
 
     name = current_user.full_name or "Portal User"
