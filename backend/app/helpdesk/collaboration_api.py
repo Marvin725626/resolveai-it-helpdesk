@@ -11,7 +11,7 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.helpdesk.api import operator, utc_time
 from app.helpdesk.models import HelpdeskTicketEvent
-from app.helpdesk.ticket_ops import FINISHED, atomic_change, check_revision, find_ticket, record_event
+from app.helpdesk.ticket_ops import FINISHED, atomic_change, check_revision, find_ticket, notify_event, record_event
 from app.helpdesk.workflow import redact
 from app.models.user import User, UserRole
 
@@ -82,6 +82,7 @@ async def assign(ticket_id: UUID, data: AssignmentRequest,
         "agent_id": target, "agent_name": person.full_name if person else None,
         "reason": reason, "request": request}, str(data.request_id))
     try:
+        await notify_event(db, ticket, user, event)
         await db.commit()
     except IntegrityError:
         await db.rollback()

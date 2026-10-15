@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     IT_EMBEDDING_DIMENSION: int = 256
     IT_MAX_RETRIEVAL_ATTEMPTS: int = 2
     IT_EVIDENCE_THRESHOLD: float = 0.12
+    IT_ATTACHMENT_ROOT: str = ""
     IT_DEMO_ENABLED: bool = True
     IT_DEMO_PASSWORD: str = ""
 

@@ -27,7 +27,7 @@ async def documents(db, tenant_id):
     return result
 
 
-async def save_document(db, user, code, data, expected=None, action="updated"):
+async def save_document(db, user, code, data, expected=None, action="updated", commit=True):
     current = (await documents(db, user.tenant_id)).get(code)
     if expected is None and current:
         raise HTTPException(409, "来源代码已存在，包括已停用的来源")
@@ -50,7 +50,8 @@ async def save_document(db, user, code, data, expected=None, action="updated"):
         await db.flush()  # Unique version prevents concurrent edits from overwriting each other.
         await db.execute(delete(RunbookChunk).where(RunbookChunk.tenant_id == user.tenant_id, RunbookChunk.code == code))
         chunks = await index_runbook(db, user.tenant_id, item) if item["active"] else 0
-        await db.commit()
+        if commit:
+            await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(409, "知识已被更新，请刷新后重试")

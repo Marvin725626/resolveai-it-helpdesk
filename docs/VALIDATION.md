@@ -73,3 +73,29 @@ The long-history fixture is backend API coverage, not a claim of 237 real staff 
 - Limits: invite links are manually delivered, are not email-verified, and are bearer credentials. No email delivery or identity-provider integration is configured.
 
 The 43 passing backend tests are isolated development regressions; they do not validate PostgreSQL concurrency, production mail delivery or external identity verification.
+
+
+## v1.6.0 · 2026-10-15 · Batch integration
+
+The following SQLite development suites were executed in separate processes and disposable databases. They cover 48 pytest tests in total, including rich lifecycle scenarios; this is a regression count, not a production success rate.
+
+| Suite | Result |
+| --- | --- |
+| test_resolveai.py | 39 passed |
+| test_invitations.py | 4 passed |
+| test_notifications.py | 1 passed |
+| test_requester_followup.py | 1 passed |
+| test_attachments.py | 1 passed |
+| test_resolutions.py | 1 passed |
+| test_knowledge_drafts.py | 1 passed |
+
+The legacy resolve fixtures now submit the structured resolution resource. The long-history test clears only its fixture rate-limit state, and the notification test preserves valid requester reminders while checking that self-operations add none. Production rate limits and notification behavior were retained.
+
+Frontend authored files were formatted and the TypeScript/Vite production build passed (1917 modules). Fresh and upgraded SQLite databases reached Alembic head `53df04c2178b`; foreign-key checks passed for the three new resolution, satisfaction and knowledge-draft tables.
+
+Resolution coverage includes current assignee/administrator permissions, CAS conflicts, repeat requests, immutable resolution rounds, requester-only per-round scoring, transaction failures and legacy confirmation without invented snapshots. Knowledge-draft coverage includes author/workspace isolation, original-create replay after editing, rejection and resubmission, source-resolution freshness, failed publication rollback and actual retrieval after publishing.
+
+The browser reproduction entry point is `scripts/smoke-resolution-loop.cjs`. It creates random temporary example.com accounts and synthetic VPN content; no real customer input is used. Browser validation passed: two resolution rounds, requester reopen, confirmation and 5/5 score, support-authored draft, administrator rejection, author revision, administrator publication as KD-00001 v1 and actual retrieval hit. Before publication no draft hit was returned. An internal-note fixture was absent from the public resolution, draft and retrieval. The 390px requester page had no horizontal overflow and both browser contexts had zero page errors. Real LLM, PostgreSQL and production recovery remain unverified.
+
+
+The managed local services were restarted after integration. Web `5174` and API `8104` returned HTTP 200; both the root API and OpenAPI reported version `1.6.0`, including the new resolution and draft routes. Existing user/database data were preserved; only the independent test services and disposable database were removed.

@@ -4,16 +4,16 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import secrets
 import statistics
 import sys
 import tempfile
 from uuid import uuid4
 
 def main():
-    demo_password = os.environ.get("IT_DEMO_PASSWORD")
-    if not demo_password:
-        raise RuntimeError("Set IT_DEMO_PASSWORD before running the isolated demo evaluation.")
     parser=argparse.ArgumentParser();parser.add_argument("--strict",action="store_true");parser.add_argument("--output",default="docs/evaluation.offline.json");args=parser.parse_args()
+    # This disposable database has its own throwaway account; never reuse a real demo password.
+    demo_password = "Eval-" + secrets.token_hex(12) + "aA1!"
     root=Path(__file__).resolve().parents[1]
     cases=json.loads((root/"backend/data/eval_cases.json").read_text(encoding="utf-8"))
     with tempfile.TemporaryDirectory(prefix="resolveai-eval-") as directory:

@@ -37,6 +37,14 @@ def diagnose(client, auth, question, identity=None):
     return response.json()
 
 
+
+def resolve_ticket(client, auth, path, expected=None):
+    stamp = expected or client.get(path, headers=auth).json()["ticket"]["updated_at"]
+    return client.post(path + "/resolve", headers=auth, json={
+        "request_id": str(uuid4()), "expected_updated_at": stamp,
+        "category": "configuration", "summary": "已调整演示网络配置并验证连接恢复。", "steps": "检查配置并完成连接验证。"})
+
+
 def test_requires_identity(client):
     assert client.get("/api/v1/helpdesk/overview").status_code == 401
 
@@ -105,8 +113,9 @@ def test_ticket_transitions(client, auth):
     path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
     assert client.patch(path, headers=auth, json={"status": "CLOSED"}).status_code == 409
     for status in ["IN_PROGRESS", "RESOLVED", "CLOSED"]:
-        response = client.patch(path, headers=auth, json={"status": status})
-        assert response.status_code == 200 and response.json()["status"] == status
+        response = resolve_ticket(client, auth, path) if status == "RESOLVED" else client.patch(path, headers=auth, json={"status": status})
+        assert response.status_code == (201 if status == "RESOLVED" else 200)
+        assert client.get(path, headers=auth).json()["ticket"]["status"] == status
 
 
 def test_workspace_isolation(client, auth):
@@ -220,9 +229,9 @@ def test_ticket_revision_conflict_and_resolution_timestamp(client, auth):
     path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
     stamp = client.get(path, headers=auth).json()["ticket"]["updated_at"]
     assert client.post(path + "/claim", headers=auth, json={"expected_updated_at": stamp}).status_code == 200
-    assert client.patch(path, headers=auth, json={"status": "RESOLVED", "expected_updated_at": stamp}).status_code == 409
+    assert resolve_ticket(client, auth, path, stamp).status_code == 409
     for status in ["WAITING_FOR_CUSTOMER", "IN_PROGRESS", "RESOLVED"]:
-        assert client.patch(path, headers=auth, json={"status": status}).status_code == 200
+        assert (resolve_ticket(client, auth, path) if status == "RESOLVED" else client.patch(path, headers=auth, json={"status": status})).status_code == (201 if status == "RESOLVED" else 200)
     resolved = client.get(path, headers=auth).json()
     assert client.patch(path, headers=auth, json={"status": "CLOSED"}).status_code == 200
     closed = client.get(path, headers=auth).json()
@@ -304,7 +313,7 @@ def test_support_agent_cannot_take_or_change_another_agents_ticket(client, auth)
     path = "/api/v1/helpdesk/tickets/" + run["ticket_id"]
     assert client.post(path + "/claim", headers=auth, json={}).status_code == 200
     assert client.post(path + "/claim", headers=colleague, json={}).status_code == 409
-    assert client.patch(path, headers=colleague, json={"status": "RESOLVED"}).status_code == 403
+    assert resolve_ticket(client, colleague, path).status_code == 403
     legacy = "/api/v1/tickets/" + run["ticket_id"]
     assert client.patch(legacy, headers=colleague, json={"status": "RESOLVED"}).status_code == 409
     assert client.post(legacy + "/notes", headers=auth, json={"note": "未记录的旁路备注"}).status_code == 409
@@ -611,6 +620,7 @@ def test_assignment_scope_permissions_and_active_roster(client, auth):
 
 
 def test_event_history_cursor_traverses_more_than_two_hundred_stably(client, auth):
+    clear_test_rate_limit(client)
     from app.core.database import AsyncSessionLocal
     from app.helpdesk.models import HelpdeskTicketEvent
     run = diagnose(client, auth, "网络问题需要支持，请查看历史记录")
@@ -667,7 +677,7 @@ def test_assignment_stale_revision_finished_ticket_and_request_validation(client
     detail = client.get(path, headers=auth).json()
     assert detail["ticket"]["assigned_agent_id"] == client.get("/api/v1/auth/me", headers=auth).json()["id"]
     assert not any(event["type"] == "assignment_changed" for event in detail["events"])
-    assert client.patch(path, headers=auth, json={"status": "RESOLVED"}).status_code == 200
+    assert resolve_ticket(client, auth, path).status_code == 201
     current = client.get(path, headers=auth).json()["ticket"]
     finished = {**base, "request_id": str(uuid4()), "expected_updated_at": current["updated_at"]}
     assert client.post(path + "/assignment", headers=auth, json=finished).status_code == 409

@@ -1,15 +1,15 @@
 {
   "name": "resolveai-frontend",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "scripts": {
     "dev": "vite --port 5174 --host 127.0.0.1 --strictPort",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 5174 --host 127.0.0.1 --strictPort",
     "test:csv": "node scripts/test-csv.cjs",
-    "format": "prettier --write src/ResolveApp.tsx src/TicketQueue.tsx src/RunHistory.tsx src/KnowledgePanel.tsx src/ReadinessPanel.tsx src/EvaluationPanel.tsx src/AnalyticsPanel.tsx src/TicketOps.tsx src/TeamPage.tsx src/InviteAccept.tsx src/csv.ts src/resolve.css",
-    "format:check": "prettier --check src/ResolveApp.tsx src/TicketQueue.tsx src/RunHistory.tsx src/KnowledgePanel.tsx src/ReadinessPanel.tsx src/EvaluationPanel.tsx src/AnalyticsPanel.tsx src/TicketOps.tsx src/TeamPage.tsx src/InviteAccept.tsx src/csv.ts src/resolve.css"
+    "format": "prettier --write src/ResolveApp.tsx src/NotificationsPanel.tsx src/TicketQueue.tsx src/RunHistory.tsx src/KnowledgePanel.tsx src/ReadinessPanel.tsx src/EvaluationPanel.tsx src/AnalyticsPanel.tsx src/TicketOps.tsx src/MyRequestsPanel.tsx src/TicketAttachments.tsx src/TeamPage.tsx src/InviteAccept.tsx src/csv.ts src/resolve.css src/TicketResolution.tsx src/KnowledgeDraftAction.tsx src/KnowledgeDraftsPanel.tsx",
+    "format:check": "prettier --check src/ResolveApp.tsx src/NotificationsPanel.tsx src/TicketQueue.tsx src/RunHistory.tsx src/KnowledgePanel.tsx src/ReadinessPanel.tsx src/EvaluationPanel.tsx src/AnalyticsPanel.tsx src/TicketOps.tsx src/MyRequestsPanel.tsx src/TicketAttachments.tsx src/TeamPage.tsx src/InviteAccept.tsx src/csv.ts src/resolve.css src/TicketResolution.tsx src/KnowledgeDraftAction.tsx src/KnowledgeDraftsPanel.tsx"
   },
   "dependencies": {
     "clsx": "2.1.1",

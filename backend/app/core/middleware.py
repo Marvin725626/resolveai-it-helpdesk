@@ -76,3 +76,39 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.request_history[client_ip] = recent_requests
 
         return await call_next(request)
+
+
+class AttachmentBodyLimitMiddleware:
+    """Bound attachment multipart bytes before Starlette can spool the body to disk."""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        import re
+        from app.helpdesk.attachment_storage import MAX_BODY_BYTES
+        if scope["type"] != "http" or scope["method"] != "POST" or not re.fullmatch(
+                r"/api/v1/helpdesk/(?:my-tickets|tickets)/[^/]+/attachments", scope["path"]):
+            return await self.app(scope, receive, send)
+        headers = dict(scope.get("headers", []))
+        length = headers.get(b"content-length")
+        if length and (not length.isdigit() or int(length) > MAX_BODY_BYTES):
+            return await JSONResponse({"detail": "附件请求超过大小限制"}, status_code=413)(scope, receive, send)
+        chunks, total = [], 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            total += len(message.get("body", b""))
+            if total > MAX_BODY_BYTES:
+                return await JSONResponse({"detail": "附件请求超过大小限制"}, status_code=413)(scope, receive, send)
+            chunks.append(message.get("body", b""))
+            if not message.get("more_body", False):
+                break
+        delivered = False
+        async def bounded_receive():
+            nonlocal delivered
+            if not delivered:
+                delivered = True
+                return {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+            return await receive()
+        await self.app(scope, bounded_receive, send)

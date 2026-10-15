@@ -21,10 +21,16 @@ const statusLabel: Record<string, string> = {
 export default function TicketQueue({
   api,
   onChanged,
+  initialTicketId,
+  navigationKey,
 }: {
+  initialTicketId?: string;
+  navigationKey?: number;
   api: Api;
   onChanged: () => Promise<void>;
 }) {
+  const [focusedTicket, setFocusedTicket] = useState<TicketSummary>();
+  const [focusLoading, setFocusLoading] = useState(false);
   const [data, setData] = useState<Page>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -39,6 +45,33 @@ export default function TicketQueue({
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
   const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!initialTicketId) return;
+    let active = true;
+    setTicketSla("ALL");
+    setTicketStatus("ALL");
+    setTicketPriority("ALL");
+    setAssignment("all");
+    setTicketSearch("");
+    setSearch("");
+    setPage(1);
+    setFocusedTicket(undefined);
+    setFocusLoading(true);
+    setError("");
+    api<{ ticket: TicketSummary }>(`/helpdesk/tickets/${initialTicketId}`)
+      .then((value) => {
+        if (active) setFocusedTicket(value.ticket);
+      })
+      .catch((e) => {
+        if (active) setError(e.message);
+      })
+      .finally(() => {
+        if (active) setFocusLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [initialTicketId, navigationKey]);
   useEffect(() => {
     const timer = setTimeout(() => setSearch(ticketSearch.trim()), 300);
     return () => clearTimeout(timer);
@@ -75,9 +108,19 @@ export default function TicketQueue({
   }, [query, revision]);
   const updating = loading || ticketSearch.trim() !== search;
   const tickets = data?.items || [];
-  const filteredTickets = tickets;
+  const filteredTickets = tickets.filter(
+    (item) => item.id !== focusedTicket?.id,
+  );
   async function changed() {
-    setRevision((value) => value + 1);
+    // Await the actual queue refresh so the next operation uses the new ticket version.
+    const freshPage = await api<Page>("/helpdesk/ticket-queue?" + query);
+    setData(freshPage);
+    if (focusedTicket) {
+      const fresh = await api<{ ticket: TicketSummary }>(
+        `/helpdesk/tickets/${focusedTicket.id}`,
+      );
+      setFocusedTicket(fresh.ticket);
+    }
     await onChanged();
   }
   async function changeStatus(id: string, status: string, claim = false) {
@@ -85,7 +128,10 @@ export default function TicketQueue({
     setTicketBusy(true);
     setError("");
     try {
-      const current = tickets.find((item) => item.id === id);
+      const current =
+        focusedTicket?.id === id
+          ? focusedTicket
+          : tickets.find((item) => item.id === id);
       await api(`/helpdesk/tickets/${id}${claim ? "/claim" : ""}`, {
         method: claim ? "POST" : "PATCH",
         body: JSON.stringify({
@@ -146,8 +192,126 @@ export default function TicketQueue({
       setError(e instanceof Error ? e.message : "导出失败");
     }
   }
+  function renderTicket(t: TicketSummary, focused = false) {
+    return (
+      <article
+        className="ticket-card"
+        key={t.id}
+        aria-label={focused ? "通知关联工单" : undefined}
+      >
+        <div>
+          <span className="source-code">
+            {focused ? "通知关联工单 · " : ""}#{t.id.slice(0, 8)}
+          </span>
+          <h3>{t.subject}</h3>
+          <p>{t.reason}</p>
+          <small>
+            {new Date(t.created_at).toLocaleString("zh-CN", {
+              timeZone: "Asia/Hong_Kong",
+            })}{" "}
+            · {t.priority === "HIGH" ? "高优先级" : "普通优先级"}
+          </small>
+          <div className="ticket-owner">
+            <span>接手人：{t.assigned_agent_name || "尚未接手"}</span>
+            <SlaBadge ticket={t} />
+          </div>
+        </div>
+        <div className="ticket-actions">
+          <span
+            className={
+              t.status === "RESOLVED" || t.status === "CLOSED"
+                ? "small-pill green"
+                : "small-pill amber"
+            }
+          >
+            {statusLabel[t.status]}
+          </span>
+          {[
+            "OPEN",
+            "ESCALATED",
+            "CLOSED",
+            "RESOLVED",
+            "WAITING_FOR_CUSTOMER",
+          ].includes(t.status) && (
+            <button
+              className="secondary"
+              disabled={ticketBusy || updating}
+              onClick={() =>
+                changeStatus(
+                  t.id,
+                  "IN_PROGRESS",
+                  ["OPEN", "ESCALATED"].includes(t.status) &&
+                    !t.assigned_agent_id,
+                )
+              }
+            >
+              {["CLOSED", "RESOLVED"].includes(t.status)
+                ? "重新处理"
+                : t.status === "WAITING_FOR_CUSTOMER"
+                  ? "继续处理"
+                  : "接手处理"}
+            </button>
+          )}
+          {["IN_PROGRESS", "WAITING_FOR_CUSTOMER"].includes(t.status) && (
+            <button
+              className="secondary"
+              disabled={ticketBusy || updating}
+              onClick={(event) => {
+                const details = event.currentTarget
+                  .closest("article")
+                  ?.querySelector<HTMLDetailsElement>("details.ticket-ops");
+                if (details && !details.open) details.open = true;
+                details?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              填写解决记录
+            </button>
+          )}
+          {t.status === "IN_PROGRESS" && (
+            <button
+              className="secondary"
+              disabled={ticketBusy || updating}
+              onClick={() => changeStatus(t.id, "WAITING_FOR_CUSTOMER")}
+            >
+              等待员工反馈
+            </button>
+          )}
+          {t.status === "RESOLVED" && (
+            <button
+              className="secondary"
+              disabled={ticketBusy || updating}
+              onClick={() => changeStatus(t.id, "CLOSED")}
+            >
+              关闭工单
+            </button>
+          )}
+        </div>
+        {focused && (
+          <button
+            className="text-button"
+            onClick={() => setFocusedTicket(undefined)}
+          >
+            收起关联工单
+          </button>
+        )}
+        <TicketOps
+          key={focused ? `${t.id}-${navigationKey}` : t.id}
+          ticket={t}
+          api={api}
+          onChanged={changed}
+          initiallyOpen={focused}
+        />
+      </article>
+    );
+  }
   return (
     <section className="panel">
+      {focusLoading && <p role="status">正在打开关联工单…</p>}
+      {focusedTicket && (
+        <div className="notification-target">
+          {renderTicket(focusedTicket, true)}
+        </div>
+      )}
       {error && (
         <div className="error" role="alert">
           {error}
@@ -286,90 +450,7 @@ export default function TicketQueue({
         </div>
       ) : (
         <div className="ticket-list">
-          {filteredTickets.map((t) => (
-            <article className="ticket-card" key={t.id}>
-              <div>
-                <span className="source-code">#{t.id.slice(0, 8)}</span>
-                <h3>{t.subject}</h3>
-                <p>{t.reason}</p>
-                <small>
-                  {new Date(t.created_at).toLocaleString("zh-CN", {
-                    timeZone: "Asia/Hong_Kong",
-                  })}{" "}
-                  · {t.priority === "HIGH" ? "高优先级" : "普通优先级"}
-                </small>
-                <div className="ticket-owner">
-                  <span>接手人：{t.assigned_agent_name || "尚未接手"}</span>
-                  <SlaBadge ticket={t} />
-                </div>
-              </div>
-              <div className="ticket-actions">
-                <span
-                  className={
-                    t.status === "RESOLVED" || t.status === "CLOSED"
-                      ? "small-pill green"
-                      : "small-pill amber"
-                  }
-                >
-                  {statusLabel[t.status]}
-                </span>
-                {[
-                  "OPEN",
-                  "ESCALATED",
-                  "CLOSED",
-                  "RESOLVED",
-                  "WAITING_FOR_CUSTOMER",
-                ].includes(t.status) && (
-                  <button
-                    className="secondary"
-                    disabled={ticketBusy || updating}
-                    onClick={() =>
-                      changeStatus(
-                        t.id,
-                        "IN_PROGRESS",
-                        ["OPEN", "ESCALATED"].includes(t.status) &&
-                          !t.assigned_agent_id,
-                      )
-                    }
-                  >
-                    {["CLOSED", "RESOLVED"].includes(t.status)
-                      ? "重新处理"
-                      : t.status === "WAITING_FOR_CUSTOMER"
-                        ? "继续处理"
-                        : "接手处理"}
-                  </button>
-                )}
-                {t.status === "IN_PROGRESS" && (
-                  <button
-                    className="secondary"
-                    disabled={ticketBusy || updating}
-                    onClick={() => changeStatus(t.id, "RESOLVED")}
-                  >
-                    标记解决
-                  </button>
-                )}
-                {t.status === "IN_PROGRESS" && (
-                  <button
-                    className="secondary"
-                    disabled={ticketBusy || updating}
-                    onClick={() => changeStatus(t.id, "WAITING_FOR_CUSTOMER")}
-                  >
-                    等待员工反馈
-                  </button>
-                )}
-                {t.status === "RESOLVED" && (
-                  <button
-                    className="secondary"
-                    disabled={ticketBusy || updating}
-                    onClick={() => changeStatus(t.id, "CLOSED")}
-                  >
-                    关闭工单
-                  </button>
-                )}
-              </div>
-              <TicketOps ticket={t} api={api} onChanged={changed} />
-            </article>
-          ))}
+          {filteredTickets.map((t) => renderTicket(t))}
         </div>
       )}
       <div className="pagination">

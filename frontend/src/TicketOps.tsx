@@ -1,3 +1,6 @@
+import KnowledgeDraftAction from "./KnowledgeDraftAction";
+import { SupportResolution } from "./TicketResolution";
+import TicketAttachments from "./TicketAttachments";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Clock, History, MessageSquare, Send, UserRound } from "lucide-react";
 
@@ -46,6 +49,13 @@ type EventPage = {
   events: Event[];
   has_more: boolean;
   next_before: number | null;
+};
+type PublicReply = {
+  id: string;
+  author_name: string;
+  direction: "requester" | "support";
+  body: string;
+  created_at: string;
 };
 type Roster = {
   items: { id: string; name: string; role: string }[];
@@ -96,6 +106,7 @@ function eventTitle(event: Event) {
     return `接手人变更：${event.payload.from_agent_name || "未分派"} → ${event.payload.agent_name || "释放工单"}`;
   if (event.type === "status_changed")
     return `${status[event.payload.from || ""] || event.payload.from} → ${status[event.payload.to || ""] || event.payload.to}`;
+  if (event.type === "satisfaction_submitted") return "报障人已提交本轮评价";
   return event.type === "note" ? "处理备注" : event.type;
 }
 const activeStatus = (value: string) => !["RESOLVED", "CLOSED"].includes(value);
@@ -104,15 +115,26 @@ export default function TicketOps({
   ticket,
   api,
   onChanged,
+  initiallyOpen = false,
 }: {
   ticket: TicketSummary;
+  initiallyOpen?: boolean;
   api: Api;
   onChanged: () => Promise<void>;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   const [detail, setDetail] = useState<Detail>();
   const [revision, setRevision] = useState(0);
   const [draft, setDraft] = useState("");
+  const [publicDraft, setPublicDraft] = useState("");
+  const [publicReplies, setPublicReplies] = useState<PublicReply[]>([]);
+  const [publicBefore, setPublicBefore] = useState<number | null>(null);
+  const [publicHasMore, setPublicHasMore] = useState(false);
+  const [publicOlderLoading, setPublicOlderLoading] = useState(false);
+  const [publicError, setPublicError] = useState("");
+  const pendingPublic = useRef<{ text: string; body: string } | undefined>(
+    undefined,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [assignmentTarget, setAssignmentTarget] = useState("");
@@ -179,6 +201,108 @@ export default function TicketOps({
       if (generation.current === current) generation.current += 1;
     };
   }, [open, ticket.id, ticket.updated_at, revision]);
+
+  useEffect(() => {
+    setPublicReplies([]);
+    setPublicBefore(null);
+    setPublicHasMore(false);
+    setPublicError("");
+    setPublicDraft("");
+    pendingPublic.current = undefined;
+  }, [ticket.id]);
+
+  useEffect(() => {
+    if (!open) return;
+    const current = generation.current;
+    api<{
+      items: PublicReply[];
+      next_before: number | null;
+      has_more: boolean;
+    }>(`/helpdesk/tickets/${ticket.id}/replies?page_size=20`)
+      .then((value) => {
+        if (generation.current === current) {
+          setPublicReplies(value.items);
+          setPublicBefore(value.next_before);
+          setPublicHasMore(value.has_more);
+        }
+      })
+      .catch((e) => {
+        if (generation.current === current) setPublicError(e.message);
+      });
+  }, [open, ticket.id, ticket.updated_at, revision]);
+
+  async function loadOlderPublicReplies() {
+    if (publicBefore === null || publicOlderLoading) return;
+    const current = generation.current;
+    setPublicOlderLoading(true);
+    setPublicError("");
+    try {
+      const page = await api<{
+        items: PublicReply[];
+        next_before: number | null;
+        has_more: boolean;
+      }>(
+        `/helpdesk/tickets/${ticket.id}/replies?before=${publicBefore}&page_size=20`,
+      );
+      if (generation.current !== current) return;
+      setPublicReplies((previous) => [...page.items, ...previous]);
+      setPublicBefore(page.next_before);
+      setPublicHasMore(page.has_more);
+    } catch (e) {
+      if (generation.current === current)
+        setPublicError(e instanceof Error ? e.message : "读取较早回复失败");
+    } finally {
+      if (generation.current === current) setPublicOlderLoading(false);
+    }
+  }
+
+  async function addPublicReply(event: FormEvent) {
+    event.preventDefault();
+    if (!detail || busy || publicDraft.trim().length < 2) return;
+    const text = publicDraft.trim();
+    if (!pendingPublic.current || pendingPublic.current.text !== text) {
+      pendingPublic.current = {
+        text,
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          expected_updated_at: detail.ticket.updated_at,
+          body: text,
+        }),
+      };
+    }
+    setBusy(true);
+    setError("");
+    setPublicError("");
+    try {
+      const saved = await api<{ updated_at: string }>(
+        `/helpdesk/tickets/${ticket.id}/replies`,
+        { method: "POST", body: pendingPublic.current.body },
+      );
+      pendingPublic.current = undefined;
+      setPublicDraft("");
+      setDetail((previous) =>
+        previous
+          ? {
+              ...previous,
+              ticket: { ...previous.ticket, updated_at: saved.updated_at },
+            }
+          : previous,
+      );
+      setRevision((value) => value + 1);
+      await onChanged();
+    } catch (e) {
+      setPublicError(e instanceof Error ? e.message : "公开回复失败");
+      if ((e as Error & { status?: number }).status === 409) {
+        pendingPublic.current = undefined;
+        setPublicError(
+          "工单版本已更新，已刷新处理记录；请核对公开回复后重新提交。",
+        );
+        setRevision((value) => value + 1);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     if (
@@ -385,6 +509,7 @@ export default function TicketOps({
 
   return (
     <details
+      open={open}
       className="ticket-context ticket-ops"
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
@@ -394,6 +519,36 @@ export default function TicketOps({
       </summary>
       {open && (
         <div className="ticket-ops-body">
+          <SupportResolution
+            renderCurrent={(resolutionId) => (
+              <KnowledgeDraftAction
+                api={api}
+                ticketId={ticket.id}
+                resolutionId={resolutionId}
+              />
+            )}
+            api={api}
+            ticketId={ticket.id}
+            updatedAt={ticket.updated_at}
+            disabled={busy}
+            onBusyChange={setBusy}
+            onChanged={async () => {
+              setRevision((value) => value + 1);
+              await onChanged();
+            }}
+          />
+          <TicketAttachments
+            api={api}
+            ticketId={ticket.id}
+            updatedAt={ticket.updated_at}
+            scope="tickets"
+            disabled={busy}
+            onBusyChange={setBusy}
+            onChanged={async () => {
+              setRevision((value) => value + 1);
+              await onChanged();
+            }}
+          />
           {error && (
             <div className="error" role="alert">
               {error}
@@ -616,9 +771,82 @@ export default function TicketOps({
                   这是升级前的工单；新操作会开始记录，不补造历史记录。
                 </p>
               )}
+              <section
+                className="support-public-thread"
+                aria-label="与报障人沟通"
+              >
+                <div className="section-heading">
+                  <h3>与报障人沟通 · 公开回复</h3>
+                  <span className="micro-label">报障人可见</span>
+                </div>
+                {publicError && (
+                  <div className="error" role="alert">
+                    {publicError}
+                  </div>
+                )}
+                <div className="support-public-replies">
+                  {publicReplies.length ? (
+                    publicReplies.map((reply) => (
+                      <article key={reply.id}>
+                        <strong>
+                          {reply.direction === "support"
+                            ? `${reply.author_name} · 支持人员`
+                            : `${reply.author_name} · 报障人`}
+                        </strong>
+                        <p>{reply.body}</p>
+                        <small>{time(reply.created_at)}</small>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="panel-footnote">
+                      公开回复会显示在报障人的工单跟进页面。
+                    </p>
+                  )}
+                </div>
+                {publicHasMore && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={publicOlderLoading}
+                    onClick={loadOlderPublicReplies}
+                  >
+                    {publicOlderLoading ? "正在读取…" : "加载更早回复"}
+                  </button>
+                )}
+                {detail.ticket.status === "CLOSED" ? (
+                  <p className="panel-footnote">工单已关闭，公开沟通为只读。</p>
+                ) : (
+                  <form className="note-form" onSubmit={addPublicReply}>
+                    <label htmlFor={`public-reply-${ticket.id}`}>
+                      公开回复
+                      <textarea
+                        id={`public-reply-${ticket.id}`}
+                        value={publicDraft}
+                        onChange={(event) => setPublicDraft(event.target.value)}
+                        minLength={2}
+                        maxLength={3000}
+                        disabled={busy}
+                        placeholder="向报障人说明处理进度或需要补充的信息…"
+                      />
+                    </label>
+                    <div>
+                      <small>
+                        此内容对报障人可见；内部备注请使用下方独立输入框。
+                      </small>
+                      <button
+                        className="primary"
+                        disabled={busy || publicDraft.trim().length < 2}
+                      >
+                        {busy ? "正在发送…" : "发送公开回复"}
+                        <Send size={14} />
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </section>
               <form className="note-form" onSubmit={addNote}>
                 <label htmlFor={`note-${ticket.id}`}>
-                  新增内部处理备注
+                  新增内部备注（仅支持团队可见）
                   <textarea
                     id={`note-${ticket.id}`}
                     value={draft}

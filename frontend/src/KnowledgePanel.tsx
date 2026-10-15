@@ -7,6 +7,7 @@ import {
   Plus,
   Search,
 } from "lucide-react";
+import KnowledgeDraftsPanel from "./KnowledgeDraftsPanel";
 type Source = {
   code: string;
   title: string;
@@ -449,6 +450,14 @@ export default function KnowledgePanel({
           )}
         </section>
       )}
+      <KnowledgeDraftsPanel
+        api={api}
+        onPublished={async () => {
+          setResults(undefined);
+          await load();
+          await onChanged();
+        }}
+      />
       <section className="panel retrieval-lab">
         <div className="section-heading">
           <h2>

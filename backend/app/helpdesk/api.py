@@ -224,6 +224,8 @@ async def ticket_detail(ticket_id: UUID, user: User = Depends(get_current_user),
 async def update_ticket(ticket_id: UUID, data: TicketUpdate, user: User = Depends(get_current_user), db=Depends(get_db)):
     operator(user)
     ticket = await find_ticket(db, user, ticket_id)
+    if data.status == TicketStatus.RESOLVED and ticket.status != TicketStatus.RESOLVED:
+        raise HTTPException(409, "请通过解决记录填写公开分类、摘要和排查步骤，再标记解决")
     await change_status(db, user, ticket, data.status, data.expected_updated_at)
     await db.commit()
     return {"id": ticket.id, "status": ticket.status.value, "updated_at": utc_time(ticket.updated_at)}

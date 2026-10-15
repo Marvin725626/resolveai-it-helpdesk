@@ -1,13 +1,18 @@
 import EvaluationPanel from "./EvaluationPanel";
 import TicketQueue from "./TicketQueue";
+import NotificationsPanel, {
+  type NotificationPage,
+} from "./NotificationsPanel";
 import RunHistory from "./RunHistory";
 import ReadinessPanel from "./ReadinessPanel";
 import KnowledgePanel from "./KnowledgePanel";
 import AnalyticsPanel from "./AnalyticsPanel";
 import TeamPage from "./TeamPage";
+import MyRequestsPanel from "./MyRequestsPanel";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
+  Bell,
   ArrowDownToLine,
   ArrowRight,
   BookOpen,
@@ -79,14 +84,18 @@ type View =
   | "analytics"
   | "diagnose"
   | "tickets"
+  | "my-tickets"
   | "knowledge"
   | "history"
   | "settings"
-  | "team";
+  | "team"
+  | "notifications";
 const nav = [
   { id: "analytics", label: "运营看板", icon: Activity },
   { id: "diagnose", label: "智能诊断", icon: MessageSquare },
+  { id: "notifications", label: "个人通知", icon: Bell },
   { id: "tickets", label: "工单队列", icon: Ticket },
+  { id: "my-tickets", label: "我的报障", icon: Ticket },
   { id: "knowledge", label: "知识库", icon: BookOpen },
   { id: "history", label: "运行记录", icon: History },
   { id: "evaluation", label: "离线评估", icon: Activity },
@@ -117,6 +126,15 @@ function App() {
     localStorage.getItem("resolveai_token") || "",
   );
   const [view, setView] = useState<View>("diagnose");
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [ticketNavigation, setTicketNavigation] = useState<{
+    id: string;
+    key: number;
+  }>();
+  const [requestNavigation, setRequestNavigation] = useState<{
+    id: string;
+    key: number;
+  }>();
   const [overview, setOverview] = useState<Overview>();
   const [currentUser, setCurrentUser] = useState<{
     role: string;
@@ -139,19 +157,26 @@ function App() {
     localStorage.removeItem("resolveai_token");
     sessionStorage.removeItem("resolveai_pending_run");
     setToken("");
+    setUnreadCount(0);
+    setTicketNavigation(undefined);
+    setView("diagnose");
     setCurrentUser(undefined);
     setOverview(undefined);
     setResult(undefined);
     setTrace([]);
   }
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  async function api<T>(
+    path: string,
+    init?: RequestInit & { responseType?: "blob" },
+  ): Promise<T> {
+    const { responseType, ...options } = init || {};
+    const headers = new Headers(options.headers);
+    if (!(options.body instanceof FormData) && !headers.has("Content-Type"))
+      headers.set("Content-Type", "application/json");
+    headers.set("Authorization", `Bearer ${token}`);
     const response = await fetch("/api/v1" + path, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        ...init?.headers,
-      },
+      ...options,
+      headers,
     });
     if (response.status === 401) logout();
     if (!response.ok) {
@@ -164,7 +189,9 @@ function App() {
       Object.assign(error, { status: response.status });
       throw error;
     }
-    return response.json();
+    return responseType === "blob"
+      ? ((await response.blob()) as T)
+      : response.json();
   }
   async function refresh() {
     setOverview(await api<Overview>("/helpdesk/overview"));
@@ -189,6 +216,34 @@ function App() {
     }
     return () => abort.current?.abort();
   }, [token]);
+
+  useEffect(() => {
+    if (
+      !token ||
+      !currentUser ||
+      !["TENANT_OWNER", "TENANT_ADMIN", "SUPPORT_AGENT"].includes(
+        currentUser.role,
+      )
+    )
+      return;
+    let active = true;
+    const update = () => {
+      if (document.visibilityState === "hidden") return;
+      api<NotificationPage>("/helpdesk/notifications?page_size=1")
+        .then((page) => {
+          if (active) setUnreadCount(page.unread_count);
+        })
+        .catch(() => {});
+    };
+    update();
+    const timer = setInterval(update, 30000);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [token, currentUser?.role, view]);
 
   async function login(event: FormEvent) {
     event.preventDefault();
@@ -470,6 +525,14 @@ function App() {
               >
                 <item.icon size={19} />
                 {item.label}
+                {item.id === "notifications" && unreadCount > 0 && (
+                  <span
+                    className="nav-count"
+                    aria-label={`${unreadCount} 条未读通知`}
+                  >
+                    {unreadCount}
+                  </span>
+                )}
                 {item.id === "tickets" &&
                   overview &&
                   overview.open_tickets > 0 && (
@@ -534,15 +597,19 @@ function App() {
                   ? "描述遇到的问题，查看诊断依据、执行过程与下一步。"
                   : view === "analytics"
                     ? "从实际运行记录了解支持趋势、证据门控与工单处理情况。"
-                    : view === "tickets"
-                      ? "保留完整诊断上下文，让人工支持从正确的位置接手。"
-                      : view === "knowledge"
-                        ? "经过入库与检索的 SOP，是回答依据的起点。"
-                        : view === "evaluation"
-                          ? "查看固定开发样本的来源召回、规则决策与检查项。"
-                          : view === "history"
-                            ? "回看每一次诊断的证据、工具结果与运行轨迹。"
-                            : "查看当前模型、检索与数据源的实际配置。"}
+                    : view === "notifications"
+                      ? "查看属于你的工单提醒，及时跟进每一次交接。"
+                      : view === "tickets"
+                        ? "保留完整诊断上下文，让人工支持从正确的位置接手。"
+                        : view === "my-tickets"
+                          ? "查看你提交的 AI 转人工工单，与支持人员公开沟通并确认处理结果。"
+                          : view === "knowledge"
+                            ? "经过入库与检索的 SOP，是回答依据的起点。"
+                            : view === "evaluation"
+                              ? "查看固定开发样本的来源召回、规则决策与检查项。"
+                              : view === "history"
+                                ? "回看每一次诊断的证据、工具结果与运行轨迹。"
+                                : "查看当前模型、检索与数据源的实际配置。"}
               </p>
             </div>
             <span className="heading-badge">
@@ -755,9 +822,15 @@ function App() {
                         </div>
                         <button
                           className="text-button"
-                          onClick={() => setView("tickets")}
+                          onClick={() => {
+                            setRequestNavigation({
+                              id: result.ticket_id!,
+                              key: Date.now(),
+                            });
+                            setView("my-tickets");
+                          }}
                         >
-                          查看工单
+                          跟进这张工单
                           <ArrowRight size={15} />
                         </button>
                       </div>
@@ -886,7 +959,31 @@ function App() {
               </aside>
             </div>
           )}
-          {view === "tickets" && <TicketQueue api={api} onChanged={refresh} />}
+          {view === "notifications" && (
+            <NotificationsPanel
+              api={api}
+              onCount={setUnreadCount}
+              onOpenTicket={(id) => {
+                setTicketNavigation({ id, key: Date.now() });
+                setView("tickets");
+              }}
+            />
+          )}
+          {view === "tickets" && (
+            <TicketQueue
+              api={api}
+              onChanged={refresh}
+              initialTicketId={ticketNavigation?.id}
+              navigationKey={ticketNavigation?.key}
+            />
+          )}
+          {view === "my-tickets" && (
+            <MyRequestsPanel
+              api={api}
+              initialTicketId={requestNavigation?.id}
+              navigationKey={requestNavigation?.key}
+            />
+          )}
           {view === "knowledge" && (
             <KnowledgePanel api={api} onChanged={refresh} />
           )}
