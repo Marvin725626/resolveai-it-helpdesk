@@ -1,3 +1,4 @@
+import os
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
@@ -36,6 +37,15 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initializes database schema and tables."""
+    schema_mode = os.environ.get("APP_SCHEMA_MODE", "bootstrap")
+    if schema_mode not in ("bootstrap", "migrate"):
+        raise RuntimeError("APP_SCHEMA_MODE must be bootstrap or migrate")
+    if schema_mode == "migrate":
+        # Deployment entrypoint runs Alembic. Never mutate its schema via create_all.
+        from sqlalchemy import text
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT version_num FROM alembic_version"))
+        return
     # Import all models to ensure they are registered with Base metadata
     import app.models.tenant  # noqa
     import app.models.user  # noqa

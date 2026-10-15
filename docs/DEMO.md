@@ -88,3 +88,12 @@ node scripts/smoke-browser.cjs
 5. 切换7/30/90天，区分解决轮次、去重工单数和评分提交窗口，导出当前选择的指标JSON。
 
 当前积压是全时间快照，不随历史窗口切换；空评分不会伪造均分。保存视图不会自动修改或分派工单。
+
+## v1.8：独立部署与数据恢复演练
+
+1. 从项目根目录运行 `.\.venv\Scripts\python.exe scripts\docker_deploy.py up`，首次会创建仅本地保存的随机配置；Docker 演示使用 `5184/8114`，已有 `5174/8104` SQLite 服务及数据保持独立。
+2. 用 `docker_deploy.py status` 查看本地编排状态；运行 `postgres-check` 检查隔离数据库初始化与升级，运行 `live-check` 创建本地合成持久化 fixture，再运行 `recreate-check` 检查应用容器重建后的数据。
+3. PostgreSQL dump/restore 演练需先成功完成 `live-check`，从宿主机 `.venv` 执行 `scripts\postgres_restore_drill.py --offline-confirmed`。脚本会短暂停止此 Compose project 的应用写入方，恢复到新临时数据库并验证，不替换原数据库或附件卷。
+4. SQLite 数据库和私有附件 bundle 要求先人工停止所有写入者，再执行 `scripts\recovery_bundle.py backup --offline-confirmed`。恢复仅允许写入全新的 `.local/restores` 目录。
+
+Docker/PostgreSQL 实测进度见[验证记录](VALIDATION.md)。这些操作是本地隔离演示和合成恢复演练，不代表生产切换或真实客户数据恢复能力。完整限制及命令见[部署说明](DEPLOYMENT.md)和[运维与备份](OPERATIONS.md)。

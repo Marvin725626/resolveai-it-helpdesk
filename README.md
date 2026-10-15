@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -29,7 +29,13 @@ flowchart LR
     D --> M[运营看板与导出]
 ```
 
-## 本批完善：日常分诊与团队运营
+## 本批完善：部署与恢复
+
+- 独立 Docker 一键启动：PostgreSQL、API 与同源前端，默认 5184/8114，数据库和附件使用持久卷。
+- 数据与附件恢复：SQLite 离线 bundle 校验并恢复到新目录；PostgreSQL 合成数据 dump/restore 演练。
+- 可重复交付检查：数据库迁移、真实向量检索、业务闭环及容器重建持久化，结果见[验证记录](docs/VALIDATION.md)。
+
+## 日常分诊与团队运营
 
 - 优先级调整：预览新时限、填写原因，工单版本和请求ID保护，处理记录可追溯。
 - 个人保存视图：搜索、状态、优先级、接手范围及时限条件持久保存，直接应用常用工作队列。
@@ -178,13 +184,17 @@ IT_EMBEDDING_DIMENSION=256
 
 ## PostgreSQL / Docker
 
-独立编排文件为 `compose.resolveai.yml`，使用 `pgvector/pgvector:pg16`。根目录 `.env` 需要配置随机 `AUTH_SECRET` 和 `POSTGRES_PASSWORD`。
+独立编排文件为 `compose.resolveai.yml`，使用 `pgvector/pgvector:pg16`，默认绑定 `127.0.0.1:5184`（Web）和 `127.0.0.1:8114`（API）。它有独立 Compose project、数据库卷和附件卷；原有 SQLite 演示服务 `5174/8104` 与其数据不受影响。部署入口、检查及恢复演练见[部署说明](docs/DEPLOYMENT.md)。
 
 ```powershell
-docker compose -f compose.resolveai.yml up --build -d
+cd E:\agent\resolveai
+.\.venv\Scripts\python.exe scripts\docker_deploy.py up
+.\.venv\Scripts\python.exe scripts\docker_deploy.py status
 ```
 
-数据库初始化创建 vector 扩展、HNSW 向量索引与 GIN 全文索引。当前电脑的 Docker daemon 未运行，所以该路径已实现但尚未进行容器 / PostgreSQL 集成验证。它仍是本地演示配置，不能当作生产部署。
+首次运行会生成仅本地保存的 `.local/docker/.env` 随机凭据；脚本不会打印或覆盖该文件。其它动作包括 `stop`、`postgres-check`、`live-check`、`recreate-check`。Docker/PostgreSQL 的本轮实际集成验证状态请看[验证记录](docs/VALIDATION.md)；该配置是本机演示与恢复验证，不是生产部署方案。
+
+SQLite 数据库与私有附件可用离线 bundle 演练备份及恢复；它要求操作者先停止写入服务并明确传入 `--offline-confirmed`，恢复只写入全新的 `.local/restores` 目标，不覆盖现有数据。详细边界见[运维与备份](docs/OPERATIONS.md)。
 
 ## 验证
 

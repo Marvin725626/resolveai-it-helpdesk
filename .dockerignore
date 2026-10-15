@@ -7,3 +7,7 @@
 **/.pytest_cache
 **/.env
 **/*.db
+
+**/.env.*
+**/*.db-*
+**/dist

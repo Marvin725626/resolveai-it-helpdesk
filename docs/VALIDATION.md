@@ -113,3 +113,23 @@ Authored frontend formatting and the TypeScript/Vite production build passed (19
 
 
 CI generates its default fixture password randomly for each workflow run via GITHUB_ENV; no fixed reusable demo password is stored in the workflow. Fixture databases and credentials remain isolated from deployed accounts.
+
+
+## v1.8.0 · 2026-10-16 · 部署与恢复演练
+
+| 检查 | 结果 |
+| --- | --- |
+| 核心后端回归 `test_resolveai.py` | **39 passed**（隔离开发数据库） |
+| SQLite 数据库与附件 bundle `test_recovery_bundle.py` | **1 passed**（隔离 SQLite、合成账号与附件） |
+| Docker/PostgreSQL 容器集成与 `postgres-check` / `live-check` / `recreate-check` | **全部通过**：三容器健康、迁移、业务闭环、两类并发与卷持久化 |
+| 宿主机 `postgres_restore_drill.py --offline-confirmed` | **通过**：新临时数据库恢复、活跃附件 SHA-256 一致、验证后清理临时库 |
+
+恢复 bundle 演练从新目标副本登录合成账号，读取工单、通知和个人保存视图，并下载附件核对 SHA-256；还覆盖篡改数据库/附件、附件缺失、路径越界、符号链接、拒绝覆盖及源数据保持不变。它只证明隔离 SQLite 场景，不覆盖生产数据或 PostgreSQL。
+
+Docker 部署 helper 使用独立 5184/8114 端口和独立 Compose project 配置；原本机 SQLite 5174/8104 未纳入本次部署演练。本次独立 Docker/PostgreSQL 本地实测已完成，结果不代表生产负载或真实模型验证。
+
+实际容器验收：Python 3.12 锁定依赖镜像安装成功；前端 TypeScript/Vite 构建通过（1920 modules）；PostgreSQL 16/pgvector 的 fresh、repeat、旧版本升级保留 sentinel 数据均通过，schema head 为 `c7e60b9124d8`。真实 hybrid 查询、附件上传/下载/删除、解决记录、草稿审核发布、本人确认及评分通过；工单 revision 和个人视图 version 的并发写入均得到一个成功与一个409。隔离测试库均已清理。
+
+部署中的同源 Nginx HTTP 验证了 SSE trace/result、离线报告及上述业务链。全部三个容器 force-recreate 后仍健康，关闭工单、5分评分、已发布知识向量行及活跃附件 SHA-256 保留。5184 返回 HTTP 200，8114 health.database 为 healthy，OpenAPI 版本1.8.0。
+
+PostgreSQL 恢复演练短暂停止该独立部署应用，生成 custom-format dump 与1个合成活跃附件，恢复到全新 UUID 数据库和独立附件目录；关闭工单、评分、知识向量行和附件哈希匹配。演练临时数据库已删除，原数据库/附件卷未覆盖，应用恢复运行。备份与恢复报告只保留在忽略目录 `.local/`，未提交。真实模型、企业连接器及生产环境恢复仍未验证。

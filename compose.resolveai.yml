@@ -1,40 +1,63 @@
+name: ${RESOLVEAI_COMPOSE_PROJECT:-resolveai-local}
 services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: resolveai
       POSTGRES_USER: resolveai
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-resolveai-local-only}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/docker_init.py first}
     volumes:
       - resolveai_pg:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U resolveai -d resolveai"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+    restart: unless-stopped
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.resolveai
     environment:
       APP_ENV: development
-      AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET in a root .env before using Docker}
-      DATABASE_URL: postgresql+asyncpg://resolveai:${POSTGRES_PASSWORD:-resolveai-local-only}@postgres:5432/resolveai
+      APP_SCHEMA_MODE: migrate
+      AUTH_SECRET: ${AUTH_SECRET:?Run scripts/docker_init.py first}
+      DATABASE_URL: postgresql+asyncpg://resolveai:${POSTGRES_PASSWORD:?Set random PostgreSQL password}@postgres:5432/resolveai
       DEFAULT_LLM_PROVIDER: mock
       IT_EMBEDDING_PROVIDER: local
       IT_EMBEDDING_DIMENSION: 256
       IT_DEMO_ENABLED: "true"
-      IT_DEMO_PASSWORD: ${IT_DEMO_PASSWORD:?Set IT_DEMO_PASSWORD in a root .env before using Docker}
+      IT_DEMO_PASSWORD: ${IT_DEMO_PASSWORD:?Run scripts/docker_init.py first}
+      IT_ATTACHMENT_ROOT: /var/lib/resolveai/attachments
+    volumes:
+      - resolveai_attachments:/var/lib/resolveai/attachments
     ports:
-      - "127.0.0.1:8104:8000"
+      - "127.0.0.1:${RESOLVEAI_DOCKER_API_PORT:-8114}:8000"
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; r=json.load(urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)); assert r['database']=='healthy'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.resolveai
     ports:
-      - "127.0.0.1:5174:5174"
+      - "127.0.0.1:${RESOLVEAI_DOCKER_WEB_PORT:-5184}:5174"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:5174/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
 volumes:
   resolveai_pg:
+  resolveai_attachments:

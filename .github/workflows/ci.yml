@@ -51,6 +51,7 @@ jobs:
           python -m pytest tests/test_knowledge_drafts.py -q
           python -m pytest tests/test_triage.py -q
           python -m pytest tests/test_team_metrics.py -q
+          python -m pytest tests/test_recovery_bundle.py -q
 
       - name: Evaluate offline fixtures in an isolated database
         run: python scripts/evaluate_isolated.py --strict --output "${{ runner.temp }}/resolveai-evaluation.json"

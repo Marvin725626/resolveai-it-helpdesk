@@ -6,7 +6,7 @@
 
 工作台 http://127.0.0.1:5174，API http://127.0.0.1:8104/docs。本地使用独立 SQLite 库 `backend/resolveai.db`。主工作流、知识版本和处理事件均在同一项目数据范围内。
 
-## 在线备份
+## SQLite 数据库在线快照
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\backup_sqlite.py
@@ -14,9 +14,25 @@
 
 使用 SQLite backup API 从只读连接生成一致快照，再运行 quick_check。默认保存到 `.local/backups/`，输出文件大小与 SHA-256；文件名包含 UTC 时间。脚本拒绝覆盖已有快照、覆盖原库或离开项目范围；CLI 输出还必须留在私有 `.local` 中。
 
-备份包含用户、工单、运行和内部处理记录，可能含认证哈希与内部资料。它被 `.gitignore` 排除，项目发布不上传备份。此脚本仅适用于本地 SQLite，不负责 PostgreSQL 备份或自动恢复现有库。
+备份包含用户、工单、运行和内部处理记录，可能含认证哈希与内部资料。它被 `.gitignore` 排除，项目发布不上传备份。此脚本只备份 SQLite 数据库，不包含私有附件；它不负责 PostgreSQL 备份或自动恢复现有库。
 
-恢复前应停止本项目服务，保留当前库的独立快照，再由明确的维护操作替换对应开发库。项目没有执行任何自动覆盖现有数据库的恢复操作。
+## SQLite 数据库与附件离线 bundle
+
+数据库与附件需要共同演练时，先停止所有可能写入两者的应用进程，再运行明确确认过的离线备份。工具不自动停止服务，也不声称在线多文件一致快照：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\recovery_bundle.py backup --offline-confirmed
+```
+
+它使用 SQLite backup API，并对数据库完整性、外键以及数据库列出的活跃附件 UUID 路径、大小和 SHA-256 做校验。bundle 放在私有 `.local/backups/`，可能包含敏感业务数据；不要提交、上传或通过不可信渠道传输。删除 tombstone 的附件文件不要求继续存在。
+
+恢复前会验证清单白名单、数据库及附件校验和、SQLite 完整性和外键。只能恢复到新的 `.local/restores/<目录名>`，目标必须不存在；不覆盖已有数据库或附件。建议只在新的隔离配置中启动恢复副本并确认数据，生产切换不属于该工具：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\recovery_bundle.py restore --bundle .local\backups\<bundle目录> --destination .local\restores\<新目录名>
+```
+
+PostgreSQL/Docker 本地部署及合成 dump/restore 演练请参阅[部署说明](DEPLOYMENT.md)。两种数据库的备份路径互不兼容；SQLite bundle 不支持 PostgreSQL。
 
 ## 运行检查
 

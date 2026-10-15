@@ -1,0 +1,30 @@
+name: ResolveAI Docker and PostgreSQL
+on:
+  push:
+    branches: [main, master, 'codex/**']
+  pull_request:
+    branches: [main, master]
+jobs:
+  postgres-deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate private ephemeral deployment credentials
+        run: python scripts/docker_init.py --project resolveai-ci
+      - name: Build and start healthy deployment
+        run: python scripts/docker_deploy.py up
+      - name: Real PostgreSQL migrations, vector retrieval, business flow and two CAS races
+        run: python scripts/docker_deploy.py postgres-check
+      - name: Same-origin deployed business flow (synthetic isolated tenant)
+        run: python scripts/docker_deploy.py live-check
+      - name: Recreate containers and verify named-volume persistence
+        run: python scripts/docker_deploy.py recreate-check
+      - name: Restore a PostgreSQL dump and attachment snapshot into a disposable database
+        run: python scripts/postgres_restore_drill.py --offline-confirmed
+      - name: Stop services while retaining volumes
+        if: always()
+        run: python scripts/docker_deploy.py stop
