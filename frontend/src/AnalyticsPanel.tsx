@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Activity, ArrowDownToLine, Clock, Ticket } from "lucide-react";
+import TeamMetricsPanel from "./TeamMetricsPanel";
 
 type Metrics = {
   days: number;
@@ -286,6 +287,7 @@ export default function AnalyticsPanel({
           </p>
         </>
       )}
+      <TeamMetricsPanel api={api} />
     </div>
   );
 }

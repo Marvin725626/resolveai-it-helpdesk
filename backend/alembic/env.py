@@ -39,6 +39,7 @@ import app.models.audit_log  # noqa
 import app.helpdesk.models  # noqa
 import app.helpdesk.resolution_models  # noqa
 import app.helpdesk.knowledge_draft_models  # noqa
+import app.helpdesk.view_models  # noqa
 
 # add your model's MetaData object here
 target_metadata = Base.metadata

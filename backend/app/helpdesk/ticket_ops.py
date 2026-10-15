@@ -83,6 +83,15 @@ async def notify_event(db, ticket, actor, event):
             recipients[run.user_id] = message
         if ticket.assigned_agent_id and (event.payload["direction"] == "requester" or kind == "attachment_deleted"):
             recipients[ticket.assigned_agent_id] = message
+    if event.event_type == "priority_changed":
+        from app.helpdesk.models import HelpdeskRun
+        run = await db.scalar(select(HelpdeskRun).where(HelpdeskRun.tenant_id == ticket.tenant_id,
+            HelpdeskRun.result["ticket_id"].as_string() == ticket.id).order_by(HelpdeskRun.created_at).limit(1))
+        message = ("priority_changed", "工单优先级更新", "工单优先级及演示处理目标已更新。")
+        if run:
+            recipients[run.user_id] = message
+        if ticket.assigned_agent_id:
+            recipients[ticket.assigned_agent_id] = message
     recipients.pop(actor.id, None)
     if not recipients:
         return

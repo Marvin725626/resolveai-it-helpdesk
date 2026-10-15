@@ -104,3 +104,10 @@ VPN 问题从 SOP 检索到模拟服务降级结果，最终创建附完整诊�
 [本人验收手机截图](resolveai-resolution-feedback.png) · [公开报障跟进](resolveai-my-requests.png) · [私有截图与日志附件](resolveai-ticket-attachments.png)
 
 展示使用隔离脚本生成的模拟内容，不含真实客户数据或登录凭证。
+
+
+## v1.7：日常分诊与团队运营
+
+在真实队列中保存个人筛选、带原因调整优先级及演示时限，再查看工作区积压与当前接手工作量。历史解决轮次、去重工单和本人评分采用明确的独立时间口径，并可导出当前指标JSON。
+
+操作步骤与API见 [分诊与团队运营](TRIAGE_AND_TEAM_METRICS.md)，执行结果见 [验证记录](VALIDATION.md)。

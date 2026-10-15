@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.6 功能说明](docs/RESOLUTION_LOOP.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -29,7 +29,15 @@ flowchart LR
     D --> M[运营看板与导出]
 ```
 
-## 本批完善：从解决工单到知识积累
+## 本批完善：日常分诊与团队运营
+
+- 优先级调整：预览新时限、填写原因，工单版本和请求ID保护，处理记录可追溯。
+- 个人保存视图：搜索、状态、优先级、接手范围及时限条件持久保存，直接应用常用工作队列。
+- 团队运营：当前积压、未分派、即将逾期、逾期及接手人工作量；解决轮次、去重工单与满意度分别统计并支持JSON导出。
+
+[分诊与团队运营说明](docs/TRIAGE_AND_TEAM_METRICS.md)。当前快照与历史时间窗口分开，数值来自实际工作区记录，不代表生产业务效果。
+
+## 解决工单到知识积累
 
 - **解决记录**：工程师填写解决分类、公开摘要与步骤，按解决轮次保存，重新处理后保留历史。
 - **本人验收**：报障人确认关闭后可给本轮 1–5 分满意度与留言，与 AI 回答反馈分开。

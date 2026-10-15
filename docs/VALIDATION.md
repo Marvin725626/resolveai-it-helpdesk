@@ -99,3 +99,17 @@ The browser reproduction entry point is `scripts/smoke-resolution-loop.cjs`. It 
 
 
 The managed local services were restarted after integration. Web `5174` and API `8104` returned HTTP 200; both the root API and OpenAPI reported version `1.6.0`, including the new resolution and draft routes. Existing user/database data were preserved; only the independent test services and disposable database were removed.
+
+
+## v1.7.0 · 2026-10-15 · Triage and team operations
+
+This batch executed four isolated pytest suites in separate processes: `test_resolveai.py` (39 passed), `test_notifications.py` (1 passed), `test_triage.py` (1 passed) and `test_team_metrics.py` (1 passed). These 42 tests include rich multi-step development scenarios; the older v1.6 results above remain a separate historical record. CI also retains the previous independent workflow suites.
+
+Triage coverage includes assignee/administrator permissions, tenant isolation, request replay after later transfer/completion, CAS conflicts, transaction failure, priority deadlines derived from the original creation time, preserved assignment and redacted event reasons with fixed notification summaries. Personal views cover strict filter fields, per-user scope, persistent reads, immutable-create replay, version conflicts, a 10-active-view quota and tombstone deletion.
+
+Team metrics use a fixed UTC clock and exact synthetic records to verify boundary inclusion, current waiting/backlog state, shared SLA cutoffs, inactive assignee workload, resolution rounds versus distinct ticket counts, an independent rating-submission window, rating distribution and null averages, tenant separation and support-role restrictions.
+
+Authored frontend formatting and the TypeScript/Vite production build passed (1920 modules). Fresh and upgrade SQLite migrations passed at head `c7e60b9124d8`, including foreign-key checks. The isolated two-account browser workflow passed: HIGH to URGENT priority update preserved creation time and assignment, produced the original-created-plus-one-hour overdue deadline, and recorded prior/new deadlines with fixed notifications. A personal view survived reload, applied from page two back to page one and cleared a focused ticket, remained private from the other account, and disappeared after deletion/reload. The team panel switched to 30 days and its actual downloaded JSON reported days=30. The synthetic workspace snapshot contained 12 active tickets (one URGENT, eleven unassigned); these are test records, not production scale. The 390px layout had no horizontal document overflow and there were zero browser page errors.
+
+
+CI generates its default fixture password randomly for each workflow run via GITHUB_ENV; no fixed reusable demo password is stored in the workflow. Fixture databases and credentials remain isolated from deployed accounts.

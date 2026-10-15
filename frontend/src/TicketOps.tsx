@@ -1,3 +1,4 @@
+import TicketPriority from "./TicketPriority";
 import KnowledgeDraftAction from "./KnowledgeDraftAction";
 import { SupportResolution } from "./TicketResolution";
 import TicketAttachments from "./TicketAttachments";
@@ -35,6 +36,8 @@ type Event = {
     reason?: string;
     agent_name?: string;
     from_agent_name?: string;
+    from_due_at?: string;
+    to_due_at?: string;
   };
 };
 type Detail = {
@@ -104,6 +107,15 @@ function eventTitle(event: Event) {
   if (event.type === "assigned") return `工单接手：${event.payload.agent_name}`;
   if (event.type === "assignment_changed")
     return `接手人变更：${event.payload.from_agent_name || "未分派"} → ${event.payload.agent_name || "释放工单"}`;
+  if (event.type === "priority_changed") {
+    const names: Record<string, string> = {
+      LOW: "低",
+      MEDIUM: "普通",
+      HIGH: "高",
+      URGENT: "紧急",
+    };
+    return `优先级调整：${names[event.payload.from || ""] || event.payload.from} → ${names[event.payload.to || ""] || event.payload.to}`;
+  }
   if (event.type === "status_changed")
     return `${status[event.payload.from || ""] || event.payload.from} → ${status[event.payload.to || ""] || event.payload.to}`;
   if (event.type === "satisfaction_submitted") return "报障人已提交本轮评价";
@@ -519,6 +531,17 @@ export default function TicketOps({
       </summary>
       {open && (
         <div className="ticket-ops-body">
+          <TicketPriority
+            api={api}
+            ticketId={ticket.id}
+            updatedAt={ticket.updated_at}
+            disabled={busy}
+            onBusyChange={setBusy}
+            onChanged={async () => {
+              setRevision((value) => value + 1);
+              await onChanged();
+            }}
+          />
           <SupportResolution
             renderCurrent={(resolutionId) => (
               <KnowledgeDraftAction
@@ -744,6 +767,14 @@ export default function TicketOps({
                         {event.author} · {time(event.created_at)}
                       </small>
                       {event.payload.reason && <p>{event.payload.reason}</p>}
+                      {event.type === "priority_changed" &&
+                        event.payload.from_due_at &&
+                        event.payload.to_due_at && (
+                          <p>
+                            演示截止时间：{time(event.payload.from_due_at)} →{" "}
+                            {time(event.payload.to_due_at)}
+                          </p>
+                        )}
                       {event.payload.text && <p>{event.payload.text}</p>}
                     </div>
                   </li>

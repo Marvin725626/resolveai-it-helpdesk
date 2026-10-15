@@ -13,7 +13,6 @@ jobs:
     env:
       APP_ENV: development
       IT_DEMO_ENABLED: "true"
-      IT_DEMO_PASSWORD: ResolveAI-Test-Only-123!
 
     steps:
       - name: Checkout Code
@@ -24,6 +23,15 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+
+      - name: Generate an ephemeral password for isolated CI fixtures
+        run: |
+          python - <<'PYCODE'
+          import os
+          import secrets
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as target:
+              target.write("IT_DEMO_PASSWORD=" + secrets.token_hex(24) + "Aa1!\n")
+          PYCODE
 
       - name: Install Backend Dependencies
         working-directory: ./backend
@@ -41,6 +49,8 @@ jobs:
           python -m pytest tests/test_attachments.py -q
           python -m pytest tests/test_resolutions.py -q
           python -m pytest tests/test_knowledge_drafts.py -q
+          python -m pytest tests/test_triage.py -q
+          python -m pytest tests/test_team_metrics.py -q
 
       - name: Evaluate offline fixtures in an isolated database
         run: python scripts/evaluate_isolated.py --strict --output "${{ runner.temp }}/resolveai-evaluation.json"

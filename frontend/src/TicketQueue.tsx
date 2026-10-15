@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import SavedQueueViews, { type QueueFilters } from "./SavedQueueViews";
+import { useEffect, useRef, useState } from "react";
 import { ArrowDownToLine, Ticket } from "lucide-react";
 import TicketOps, { SlaBadge, slaLabel, type TicketSummary } from "./TicketOps";
 import { ticketCsv } from "./csv";
@@ -45,9 +46,33 @@ export default function TicketQueue({
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
   const [revision, setRevision] = useState(0);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const focusGeneration = useRef(0);
+  const queueGeneration = useRef(0);
+  function applyView(filters: QueueFilters) {
+    clearTimeout(searchTimer.current);
+    focusGeneration.current++;
+    queueGeneration.current++;
+    setRevision((value) => value + 1);
+    setTicketSearch(filters.q);
+    setSearch(filters.q);
+    setTicketStatus(filters.status || "ALL");
+    setTicketPriority(filters.priority || "ALL");
+    setTicketSla(filters.sla || "ALL");
+    setAssignment(filters.assignment);
+    setSize(filters.page_size);
+    setPage(1);
+    setFocusedTicket(undefined);
+    setFocusLoading(false);
+    setData(undefined);
+    setError("");
+  }
   useEffect(() => {
     if (!initialTicketId) return;
     let active = true;
+    const current = ++focusGeneration.current;
     setTicketSla("ALL");
     setTicketStatus("ALL");
     setTicketPriority("ALL");
@@ -60,21 +85,23 @@ export default function TicketQueue({
     setError("");
     api<{ ticket: TicketSummary }>(`/helpdesk/tickets/${initialTicketId}`)
       .then((value) => {
-        if (active) setFocusedTicket(value.ticket);
+        if (active && current === focusGeneration.current)
+          setFocusedTicket(value.ticket);
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active && current === focusGeneration.current) setError(e.message);
       })
       .finally(() => {
-        if (active) setFocusLoading(false);
+        if (active && current === focusGeneration.current)
+          setFocusLoading(false);
       });
     return () => {
       active = false;
     };
   }, [initialTicketId, navigationKey]);
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(ticketSearch.trim()), 300);
-    return () => clearTimeout(timer);
+    searchTimer.current = setTimeout(() => setSearch(ticketSearch.trim()), 300);
+    return () => clearTimeout(searchTimer.current);
   }, [ticketSearch]);
   const params = new URLSearchParams({ q: search, assignment });
   if (ticketStatus !== "ALL") params.set("status", ticketStatus);
@@ -86,11 +113,12 @@ export default function TicketQueue({
   const query = params.toString();
   useEffect(() => {
     let active = true;
+    const current = ++queueGeneration.current;
     setLoading(true);
     setError("");
     api<Page>("/helpdesk/ticket-queue?" + query)
       .then((value) => {
-        if (active) {
+        if (active && current === queueGeneration.current) {
           setData(value);
           if (page > 1 && !value.items.length)
             setPage(Math.max(1, Math.ceil(value.total / size)));
@@ -113,13 +141,16 @@ export default function TicketQueue({
   );
   async function changed() {
     // Await the actual queue refresh so the next operation uses the new ticket version.
+    const currentQueue = queueGeneration.current;
+    const currentFocus = focusGeneration.current;
     const freshPage = await api<Page>("/helpdesk/ticket-queue?" + query);
-    setData(freshPage);
+    if (currentQueue === queueGeneration.current) setData(freshPage);
     if (focusedTicket) {
       const fresh = await api<{ ticket: TicketSummary }>(
         `/helpdesk/tickets/${focusedTicket.id}`,
       );
-      setFocusedTicket(fresh.ticket);
+      if (currentFocus === focusGeneration.current)
+        setFocusedTicket(fresh.ticket);
     }
     await onChanged();
   }
@@ -209,7 +240,11 @@ export default function TicketQueue({
             {new Date(t.created_at).toLocaleString("zh-CN", {
               timeZone: "Asia/Hong_Kong",
             })}{" "}
-            · {t.priority === "HIGH" ? "高优先级" : "普通优先级"}
+            ·{" "}
+            {{ LOW: "低", MEDIUM: "普通", HIGH: "高", URGENT: "紧急" }[
+              t.priority
+            ] || t.priority}
+            优先级
           </small>
           <div className="ticket-owner">
             <span>接手人：{t.assigned_agent_name || "尚未接手"}</span>
@@ -306,6 +341,19 @@ export default function TicketQueue({
   }
   return (
     <section className="panel">
+      <SavedQueueViews
+        api={api}
+        disabled={ticketBusy || updating}
+        filters={{
+          q: ticketSearch.trim(),
+          status: ticketStatus === "ALL" ? null : ticketStatus,
+          priority: ticketPriority === "ALL" ? null : ticketPriority,
+          assignment: assignment as QueueFilters["assignment"],
+          sla: ticketSla === "ALL" ? null : (ticketSla as QueueFilters["sla"]),
+          page_size: size,
+        }}
+        onApply={applyView}
+      />
       {focusLoading && <p role="status">正在打开关联工单…</p>}
       {focusedTicket && (
         <div className="notification-target">
@@ -468,6 +516,9 @@ export default function TicketQueue({
               setPage(1);
             }}
           >
+            {![10, 20, 50].includes(size) && (
+              <option value={size}>{size}</option>
+            )}
             <option value={10}>10</option>
             <option value={20}>20</option>
             <option value={50}>50</option>
