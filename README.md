@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.9 主动报障](docs/MANUAL_REQUESTS.md) · [v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -29,7 +29,13 @@ flowchart LR
     D --> M[运营看板与导出]
 ```
 
-## 本批完善：部署与恢复
+## 本批完善：主动报障
+
+- 在“我的报障”直接提交问题，展示实际来源、问题分类和提交内容。
+- 与既有工程师接手、公开回复、私有附件、确认解决及评分流程衔接。
+- 请求重试不重复建单，报障所有权按登录用户和工作区隔离，AI 诊断统计保持独立。
+
+## 部署与恢复
 
 - 独立 Docker 一键启动：PostgreSQL、API 与同源前端，默认 5184/8114，数据库和附件使用持久卷。
 - 数据与附件恢复：SQLite 离线 bundle 校验并恢复到新目录；PostgreSQL 合成数据 dump/restore 演练。

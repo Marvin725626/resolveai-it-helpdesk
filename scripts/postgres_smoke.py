@@ -75,6 +75,38 @@ async def business(url, attachment_root, live=False):
             support = await api("POST", "/auth/invitations/accept", json={"email":f"support-{suffix}@example.com",
                 "token":invitation["token"],"password":password,"full_name":"PG support"})
             support_token = support["access_token"]
+            # Manual requests must be independent of AI runs, including racing retries.
+            manual_body = {"request_id":str(uuid4()), "subject":"PG主动报障并发验收", "category":"network",
+                "description":"仅用于合成验收的办公网络故障，重连后仍无法访问测试服务。"}
+            manual_responses = await asyncio.gather(*(client.post("/api/v1/helpdesk/my-tickets",
+                headers={"Authorization":"Bearer "+token},json=manual_body) for _ in range(2)))
+            require(all(r.status_code==201 for r in manual_responses), "manual racing submissions both succeed")
+            manual_ids = {r.json()["ticket_id"] for r in manual_responses}
+            require(len(manual_ids)==1 and sorted(r.json()["cached"] for r in manual_responses)==[False,True], "manual race creates exactly one ticket")
+            manual_id = manual_ids.pop()
+            manual_mine = "/helpdesk/my-tickets/"+manual_id
+            manual_ops = "/helpdesk/tickets/"+manual_id
+            require((await api("GET","/helpdesk/my-tickets",token))["total"]==1, "manual list has no duplicate ownership joins")
+            require((await api("GET","/helpdesk/runs",token))==[], "manual submission does not fabricate AI runs")
+            await api("GET",manual_mine,wrong,status=404)
+            await api("GET",manual_mine,support_token,status=404)
+            await api("POST","/helpdesk/my-tickets",wrong,status=404,json=manual_body)
+            await api("POST","/helpdesk/my-tickets",token,status=409,json={**manual_body,"subject":"修改后的标题不能复用原请求"})
+            manual_ticket = (await api("GET",manual_ops,support_token))["ticket"]
+            require(manual_ticket["status"]=="OPEN" and manual_ticket["priority"]=="MEDIUM" and manual_ticket["assigned_agent_id"] is None,"server controls initial triage")
+            await api("POST",manual_ops+"/claim",support_token,json={"expected_updated_at":manual_ticket["updated_at"]})
+            replayed = await api("POST","/helpdesk/my-tickets",token,status=201,json=manual_body)
+            require(replayed["cached"] and replayed["ticket_id"]==manual_id,"manual replay after later processing")
+            manual_ticket = (await api("GET",manual_ops,support_token))["ticket"]
+            require(manual_ticket["status"]=="IN_PROGRESS", "replay must not reset later ticket state")
+            await api("POST",manual_ops+"/replies",support_token,status=201,json={"request_id":str(uuid4()),
+                "expected_updated_at":manual_ticket["updated_at"],"body":"合成支持回复：正在检查网络配置。"})
+            require(len((await api("GET",manual_mine+"/replies",token))["items"])==1,"manual requester sees public reply")
+            require(any(n["ticket_id"]==manual_id and n["kind"]=="support_reply" for n in
+                (await api("GET","/helpdesk/notifications",token))["items"]),"manual requester notified")
+            async with engine.connect() as connection:
+                require(await connection.scalar(text("SELECT count(*) FROM resolveai_manual_ticket_submissions WHERE tenant_id=:tenant"),{"tenant":owner["user"]["tenant_id"]})==1,"one manual ownership record")
+                require(await connection.scalar(text("SELECT count(*) FROM customers WHERE tenant_id=:tenant"),{"tenant":owner["user"]["tenant_id"]})==1,"racing retry leaves no orphan customer")
             run_body = {"request_id":str(uuid4()),"question":"VPN认证失败，请转人工处理"}
             if live:
                 events=[]
@@ -163,7 +195,8 @@ async def business(url, attachment_root, live=False):
                     key = await connection.scalar(text("SELECT storage_key FROM resolveai_ticket_attachments WHERE id=:id"), {"id":preserved["item"]["id"]})
                 manifest = {"tenant_id":owner["user"]["tenant_id"], "ticket_id":ticket_id, "resolution_id":resolution_id,
                     "draft_id":draft_id, "source_code":published["source_code"], "attachment_id":preserved["item"]["id"],
-                    "storage_key":key, "sha256":preserved["item"]["sha256"], "rating":5}
+                    "storage_key":key, "sha256":preserved["item"]["sha256"], "rating":5,
+                    "manual_ticket_id":manual_id, "manual_request_id":manual_body["request_id"], "manual_user_id":owner["user"]["id"]}
                 output=Path("/tmp/resolveai-deployment-fixture.json")
                 descriptor=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
                 with os.fdopen(descriptor,"w",encoding="utf-8") as target:
@@ -193,9 +226,9 @@ async def main():
         await asyncio.to_thread(migrate,upgrade_url,"53df04c2178b")
         previous=await asyncpg.connect(host=source.host,port=source.port or 5432,user=source.username,password=source.password,database=upgrade)
         try:
-            # Initial migration imports current metadata: remove only latest addition
-            # to reproduce a pre-v1.7 deployment, while preserving unrelated data.
+            # Reproduce an older deployment missing both latest additive tables.
             await previous.execute("DROP TABLE resolveai_saved_queue_views")
+            await previous.execute("DROP TABLE resolveai_manual_ticket_submissions")
             await previous.execute("CREATE TABLE migration_sentinel (value text PRIMARY KEY)")
             await previous.execute("INSERT INTO migration_sentinel VALUES ('preserve-existing-data')")
         finally:
@@ -205,14 +238,15 @@ async def main():
         try:
             require(await checked.fetchval("SELECT value FROM migration_sentinel")=="preserve-existing-data","upgrade preserves data")
             require(await checked.fetchval("SELECT to_regclass('resolveai_saved_queue_views')") is not None,"upgrade adds table")
-            require(await checked.fetchval("SELECT version_num FROM alembic_version")=="c7e60b9124d8","upgrade revision")
+            require(await checked.fetchval("SELECT to_regclass('resolveai_manual_ticket_submissions')") is not None,"upgrade adds manual request ownership table")
+            require(await checked.fetchval("SELECT version_num FROM alembic_version")=="d1a4f8c29b73","upgrade revision")
         finally:
             await checked.close()
         with tempfile.TemporaryDirectory(prefix="resolveai-pg-attachments-") as storage:
             await business(fresh_url,Path(storage))
         print(json.dumps({"passed":True,"database":"PostgreSQL","migrations":["fresh","repeat","upgrade-preserves-data"],
             "pgvector_hybrid_search":True,"resolution_rating_draft_publish":True,"attachment_bytes_delete":True,
-            "scoped_concurrent_CAS_cases":2,"source_database_untouched":True}))
+            "scoped_concurrent_CAS_cases":2,"manual_submission_race_and_isolation":True,"source_database_untouched":True}))
     finally:
         for name in databases:
             # Names are generated UUIDs, never caller-controlled. Drop only our new DBs.

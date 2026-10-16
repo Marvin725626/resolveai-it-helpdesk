@@ -43,6 +43,7 @@ jobs:
         working-directory: ./backend
         run: |
           python -m pytest tests/test_resolveai.py -q
+          python -m pytest tests/test_manual_requests.py -q
           python -m pytest tests/test_invitations.py -q
           python -m pytest tests/test_notifications.py -q
           python -m pytest tests/test_requester_followup.py -q

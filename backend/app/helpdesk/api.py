@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.helpdesk.models import HelpdeskRun, RunbookChunk, HelpdeskTicketEvent
+from app.helpdesk.models import HelpdeskRun, RunbookChunk, HelpdeskTicketEvent, ManualTicketSubmission
 from app.helpdesk.retrieval import embedding_identity, index_runbook
 from app.helpdesk.ticket_ops import change_status, claim_ticket, find_ticket, record_event, sla_snapshot
 from app.helpdesk.tools import services
@@ -213,7 +213,15 @@ async def ticket_detail(ticket_id: UUID, user: User = Depends(get_current_user),
     count = await db.scalar(select(func.count()).select_from(HelpdeskTicketEvent).where(*condition))
     has_more = len(events) > 100
     events = events[:100]
-    return {"ticket": ticket_dict(ticket, name), "event_count": count,
+    detail_ticket = ticket_dict(ticket, name)
+    submission = await db.scalar(select(ManualTicketSubmission).where(
+        ManualTicketSubmission.tenant_id == ticket.tenant_id, ManualTicketSubmission.ticket_id == ticket.id))
+    if submission:
+        detail_ticket["source"] = "manual"
+        detail_ticket["request"] = {"description": submission.payload["description"], "category": submission.payload["category"]}
+    else:
+        detail_ticket["source"] = "ai"
+    return {"ticket": detail_ticket, "event_count": count,
         "can_manage_assignment": user.role in (UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN),
         "has_more": has_more, "next_before": events[-1].sequence if has_more else None,
         "events": [{"id": event.id, "type": event.event_type, "author": event.author_name,

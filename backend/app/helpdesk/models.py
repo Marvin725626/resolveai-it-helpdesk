@@ -47,6 +47,18 @@ class HelpdeskTicketEvent(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
+class ManualTicketSubmission(Base):
+    """Ownership and idempotency record for requester-created tickets."""
+    __tablename__ = "resolveai_manual_ticket_submissions"
+    __table_args__ = (UniqueConstraint("tenant_id", "user_id", "ticket_id", name="uq_manual_submission_owner_ticket"),)
+    request_id = Column(String(36), primary_key=True)
+    tenant_id = Column(String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    ticket_id = Column(String(36), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
 class HelpdeskTicketReply(Base):
     __tablename__ = "resolveai_ticket_replies"
     __table_args__ = (UniqueConstraint("request_id", name="uq_resolveai_ticket_reply_request"),)

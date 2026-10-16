@@ -1,6 +1,6 @@
 # 工单协作与反馈流程
 
-这是一个可操作的本地 IT 支持流程：AI 保存诊断上下文，工程师接手、写备注、等待补充信息、标记解决并关闭。作者与时间来自数据库，操作不是预制前端动画。
+这是一个可操作的本地 IT 支持流程：[用户主动报障](MANUAL_REQUESTS.md)或 AI 保存诊断上下文后转人工，工程师接手、写备注、等待补充信息、标记解决并关闭。作者与时间来自数据库，操作不是预制前端动画。
 
 ![工单处理时间线](resolveai-ticket-timeline.png)
 
@@ -14,6 +14,7 @@ stateDiagram-v2
     state "等待反馈" as WAITING_FOR_CUSTOMER
     state "已解决" as RESOLVED
     state "已关闭" as CLOSED
+    [*] --> OPEN: 用户主动报障
     [*] --> ESCALATED: 诊断需要人工
     OPEN --> IN_PROGRESS: 接手
     OPEN --> ESCALATED: 升级

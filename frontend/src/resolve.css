@@ -2290,6 +2290,39 @@ select:focus-visible {
 .my-requests-list h2 {
   margin: 0 0 0.75rem;
 }
+.manual-request-form,
+.manual-request-detail {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+  margin: 0.75rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  padding: 0.8rem;
+}
+.manual-request-toggle {
+  width: 100%;
+  margin: 0 0 0.6rem;
+}
+.manual-request-form h3,
+.manual-request-detail h3 {
+  margin: 0;
+}
+.manual-request-form input,
+.manual-request-form select,
+.manual-request-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.manual-request-form textarea {
+  min-height: 7rem;
+}
+.manual-request-detail p {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .request-item {
   display: flex;
   width: 100%;

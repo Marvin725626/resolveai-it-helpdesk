@@ -3,17 +3,18 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import exists, func, select, or_
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.sanitizer import sanitize_text_input
-from app.helpdesk.models import HelpdeskRun, HelpdeskTicketEvent, HelpdeskTicketReply
+from app.helpdesk.models import HelpdeskRun, HelpdeskTicketEvent, HelpdeskTicketReply, ManualTicketSubmission
 from app.helpdesk.ticket_ops import atomic_change, check_revision, find_ticket, notify_event, record_event, utc
 from app.helpdesk.workflow import redact
-from app.models.ticket import Ticket, TicketStatus
+from app.models.ticket import Ticket, TicketStatus, TicketCategory, TicketPriority
+from app.models.customer import Customer
 from app.models.user import UserRole
 
 router = APIRouter(prefix="/helpdesk", tags=["Requester tickets"])
@@ -35,20 +36,85 @@ class ActionInput(BaseModel):
     explanation: str | None = Field(default=None, min_length=2, max_length=1000)
 
 
+class ManualTicketInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    subject: str = Field(strict=True, max_length=1000)
+    description: str = Field(strict=True, max_length=10000)
+    category: str = Field(default="other", pattern=r"^(network|account|software|hardware|other)$", strict=True)
+
+
+def requester_ownership(user):
+    return or_(
+        exists(select(HelpdeskRun.id).where(HelpdeskRun.tenant_id == Ticket.tenant_id,
+            HelpdeskRun.user_id == user.id, HelpdeskRun.result["ticket_id"].as_string() == Ticket.id)),
+        exists(select(ManualTicketSubmission.request_id).where(ManualTicketSubmission.tenant_id == Ticket.tenant_id,
+            ManualTicketSubmission.user_id == user.id, ManualTicketSubmission.ticket_id == Ticket.id)))
+
+
 async def requester_ticket(db, user, ticket_id):
-    ticket = await db.scalar(select(Ticket).join(HelpdeskRun, HelpdeskRun.result["ticket_id"].as_string() == Ticket.id)
-        .where(Ticket.id == str(ticket_id), Ticket.tenant_id == user.tenant_id,
-            HelpdeskRun.tenant_id == user.tenant_id, HelpdeskRun.user_id == user.id))
+    ticket = await db.scalar(select(Ticket).where(Ticket.id == str(ticket_id), Ticket.tenant_id == user.tenant_id,
+        requester_ownership(user)))
     if ticket is None:
         raise HTTPException(404, "Ticket not found")
     return ticket
 
 
-def public_ticket(ticket, assignee=None):
+def public_ticket(ticket, assignee=None, source="AI 转人工"):
     return {"id": ticket.id, "subject": ticket.subject, "status": ticket.status.value,
         "priority": ticket.priority.value, "assignee": assignee,
         "created_at": iso_time(ticket.created_at), "updated_at": iso_time(ticket.updated_at),
-        "resolved_at": iso_time(ticket.resolved_at), "source": "AI 转人工"}
+        "resolved_at": iso_time(ticket.resolved_at), "source": source}
+
+
+@router.post("/my-tickets", status_code=201)
+async def create_manual_ticket(data: ManualTicketInput, user=Depends(get_current_user), db=Depends(get_db)):
+    tenant_id, user_id = user.tenant_id, user.id
+    subject = redact(sanitize_text_input(data.subject.strip(), 500)).strip()
+    description = redact(sanitize_text_input(data.description.strip(), 10000)).strip()
+    if not 4 <= len(subject) <= 200:
+        raise HTTPException(422, "报障标题清理后需为4至200个字符")
+    if not 10 <= len(description) <= 4000:
+        raise HTTPException(422, "问题描述清理后需为10至4000个字符")
+    payload = {"subject": subject, "description": description, "category": data.category}
+    identity = str(data.request_id)
+    prior = await db.get(ManualTicketSubmission, identity)
+    if prior:
+        if prior.tenant_id != tenant_id or prior.user_id != user_id:
+            raise HTTPException(404, "Request not found")
+        if prior.payload != payload:
+            raise HTTPException(409, "Request ID already belongs to another ticket")
+        return {"ticket_id": prior.ticket_id, "cached": True}
+    customer = await db.scalar(select(Customer).where(Customer.tenant_id == tenant_id,
+        Customer.email == user.email).order_by(Customer.created_at).limit(1))
+    if customer is None:
+        customer = Customer(tenant_id=tenant_id, name=user.full_name, email=user.email)
+        db.add(customer)
+        await db.flush()
+    category = {"network": TicketCategory.TECHNICAL, "account": TicketCategory.TECHNICAL,
+        "software": TicketCategory.TECHNICAL, "hardware": TicketCategory.TECHNICAL,
+        "other": TicketCategory.GENERAL}[data.category]
+    ticket = Ticket(tenant_id=tenant_id, customer_id=customer.id, subject=subject,
+        description=description, category=category, priority=TicketPriority.MEDIUM, status=TicketStatus.OPEN)
+    db.add(ticket)
+    await db.flush()
+    submission = ManualTicketSubmission(request_id=identity, tenant_id=tenant_id, user_id=user_id,
+        ticket_id=ticket.id, payload=payload)
+    db.add(submission)
+    # Keep only scalar identity values across rollback; ORM user attributes may expire.
+    event = record_event(db, ticket, user, "created", {"source": "manual", "category": data.category}, identity)
+    try:
+        await db.flush()
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        prior = await db.get(ManualTicketSubmission, identity)
+        if prior and prior.tenant_id == tenant_id and prior.user_id == user_id:
+            if prior.payload == payload:
+                return {"ticket_id": prior.ticket_id, "cached": True}
+            raise HTTPException(409, "Request ID already belongs to another ticket")
+        raise HTTPException(409, "Request conflict; retry with the same request ID")
+    return {"ticket_id": ticket.id, "cached": False}
 
 
 def public_reply(row):
@@ -67,24 +133,31 @@ async def assignee_name(db, ticket):
 @router.get("/my-tickets")
 async def my_tickets(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
         status: TicketStatus | None = None, user=Depends(get_current_user), db=Depends(get_db)):
-    query = select(Ticket).join(HelpdeskRun, HelpdeskRun.result["ticket_id"].as_string() == Ticket.id).where(
-        Ticket.tenant_id == user.tenant_id, HelpdeskRun.tenant_id == user.tenant_id, HelpdeskRun.user_id == user.id)
+    manual_exists = exists(select(ManualTicketSubmission.request_id).where(
+        ManualTicketSubmission.tenant_id == Ticket.tenant_id, ManualTicketSubmission.ticket_id == Ticket.id))
+    query = select(Ticket, manual_exists.label("is_manual")).where(Ticket.tenant_id == user.tenant_id, requester_ownership(user))
     if status:
         query = query.where(Ticket.status == status)
     total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = list((await db.scalars(query.order_by(Ticket.created_at.desc(), Ticket.id).offset((page-1)*page_size).limit(page_size))).all())
-    return {"items": [{**public_ticket(ticket, await assignee_name(db, ticket))} for ticket in rows],
+    rows = list((await db.execute(query.order_by(Ticket.created_at.desc(), Ticket.id).offset((page-1)*page_size).limit(page_size))).all())
+    return {"items": [{**public_ticket(ticket, await assignee_name(db, ticket), "手动报障" if is_manual else "AI 转人工")} for ticket, is_manual in rows],
         "page": page, "page_size": page_size, "total": total}
 
 
 @router.get("/my-tickets/{ticket_id}")
 async def my_ticket_detail(ticket_id: UUID, user=Depends(get_current_user), db=Depends(get_db)):
     ticket = await requester_ticket(db, user, ticket_id)
+    submission = await db.scalar(select(ManualTicketSubmission).where(
+        ManualTicketSubmission.ticket_id == ticket.id, ManualTicketSubmission.user_id == user.id,
+        ManualTicketSubmission.tenant_id == user.tenant_id))
     events = list((await db.scalars(select(HelpdeskTicketEvent).where(
         HelpdeskTicketEvent.tenant_id == user.tenant_id, HelpdeskTicketEvent.ticket_id == ticket.id,
         HelpdeskTicketEvent.event_type.in_(("created", "status_changed", "assigned", "assignment_changed")))
         .order_by(HelpdeskTicketEvent.sequence.asc()).limit(100))).all())
-    return {"ticket": public_ticket(ticket, await assignee_name(db, ticket)),
+    ticket_view = public_ticket(ticket, await assignee_name(db, ticket), "手动报障" if submission else "AI 转人工")
+    if submission:
+        ticket_view["request"] = {"description": submission.payload["description"], "category": submission.payload["category"]}
+    return {"ticket": ticket_view,
         "timeline": [{"type": row.event_type, "created_at": iso_time(row.created_at),
             "status": row.payload.get("to") if row.event_type == "status_changed" else None,
             "author": row.author_name if row.event_type == "status_changed" else None} for row in events]}

@@ -11,6 +11,8 @@ export type TicketSummary = {
   status: string;
   priority: string;
   description?: string;
+  source?: "manual" | "ai";
+  request?: { description: string; category: string };
   reason: string;
   created_at: string;
   updated_at: string;
@@ -899,10 +901,31 @@ export default function TicketOps({
                   </button>
                 </div>
               </form>
-              <details className="diagnostic-payload">
-                <summary>查看原始诊断上下文</summary>
-                <pre>{detail.ticket.description}</pre>
-              </details>
+              {detail.ticket.source === "manual" ? (
+                <section className="manual-request-detail">
+                  <h3>
+                    报障内容 ·{" "}
+                    {(
+                      {
+                        network: "网络",
+                        account: "账号",
+                        software: "软件",
+                        hardware: "硬件",
+                        other: "其他",
+                      } as Record<string, string>
+                    )[detail.ticket.request?.category || "other"] || "其他"}
+                  </h3>
+                  <p>
+                    {detail.ticket.request?.description ||
+                      detail.ticket.description}
+                  </p>
+                </section>
+              ) : (
+                <details className="diagnostic-payload">
+                  <summary>查看原始诊断上下文</summary>
+                  <pre>{detail.ticket.description}</pre>
+                </details>
+              )}
             </>
           )}
         </div>

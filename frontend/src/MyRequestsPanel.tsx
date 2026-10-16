@@ -16,7 +16,7 @@ type Item = {
   source: string;
 };
 type Detail = {
-  ticket: Item;
+  ticket: Item & { request?: { description: string; category: string } };
   timeline: {
     type: string;
     status?: string;
@@ -69,11 +69,73 @@ export default function MyRequestsPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [newSubject, setNewSubject] = useState("");
+  const [newCategory, setNewCategory] = useState("other");
+  const [newDescription, setNewDescription] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const [retryCreate, setRetryCreate] = useState(false);
   const generation = useRef(0);
   const lastNavigationKey = useRef<number | undefined>(undefined);
   const pending = useRef<
     { key: string; body: string; path: string } | undefined
   >(undefined);
+  const pendingCreate = useRef<{ key: string; body: string } | undefined>(
+    undefined,
+  );
+
+  async function createTicket(event: FormEvent) {
+    event.preventDefault();
+    if (creating) return;
+    const subject = newSubject.trim();
+    const description = newDescription.trim();
+    const key = `${subject}\n${newCategory}\n${description}`;
+    if (!pendingCreate.current || pendingCreate.current.key !== key)
+      pendingCreate.current = {
+        key,
+        body: JSON.stringify({
+          request_id: crypto.randomUUID(),
+          subject,
+          description,
+          category: newCategory,
+        }),
+      };
+    setCreating(true);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api<{ ticket_id: string; cached: boolean }>(
+        "/helpdesk/my-tickets",
+        {
+          method: "POST",
+          body: pendingCreate.current.body,
+        },
+      );
+      pendingCreate.current = undefined;
+      setRetryCreate(false);
+      setNewSubject("");
+      setNewDescription("");
+      setSelected(result.ticket_id);
+      setListPage(1);
+      setNotice("报障已提交，已打开新工单。");
+      try {
+        const page = await api<{ items: Item[]; total: number }>(
+          "/helpdesk/my-tickets?page=1&page_size=20",
+        );
+        setItems(page.items);
+        setListTotal(page.total);
+      } catch {
+        setNotice("报障已提交；工单列表刷新失败，请稍后刷新列表。");
+      }
+    } catch (e) {
+      setRetryCreate(true);
+      setError(
+        `${e instanceof Error ? e.message : "提交报障失败"}。提交结果尚未确认，可重试原提交。修改内容会作为新的报障。`,
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
   useEffect(() => {
     let active = true;
     if (
@@ -279,8 +341,75 @@ export default function MyRequestsPanel({
     <section className="panel my-requests">
       <div className="my-requests-list">
         <h2>我的报障</h2>
+        <button
+          className="primary manual-request-toggle"
+          type="button"
+          disabled={creating}
+          onClick={() => setShowCreate((value) => !value)}
+        >
+          {showCreate ? "收起报障表单" : "新建报障"}
+        </button>
+        {showCreate && (
+          <form className="manual-request-form" onSubmit={createTicket}>
+            <h3>新建报障</h3>
+            <label htmlFor="manual-request-subject">报障标题</label>
+            <input
+              id="manual-request-subject"
+              disabled={creating}
+              value={newSubject}
+              maxLength={200}
+              onChange={(e) => {
+                setNewSubject(e.target.value);
+                pendingCreate.current = undefined;
+                setRetryCreate(false);
+              }}
+              placeholder="简要说明遇到的问题"
+            />
+            <label htmlFor="manual-request-category">问题类别</label>
+            <select
+              id="manual-request-category"
+              disabled={creating}
+              value={newCategory}
+              onChange={(e) => {
+                setNewCategory(e.target.value);
+                pendingCreate.current = undefined;
+                setRetryCreate(false);
+              }}
+            >
+              <option value="network">网络</option>
+              <option value="account">账号</option>
+              <option value="software">软件</option>
+              <option value="hardware">硬件</option>
+              <option value="other">其他</option>
+            </select>
+            <label htmlFor="manual-request-description">问题描述</label>
+            <textarea
+              id="manual-request-description"
+              disabled={creating}
+              value={newDescription}
+              maxLength={4000}
+              onChange={(e) => {
+                setNewDescription(e.target.value);
+                pendingCreate.current = undefined;
+                setRetryCreate(false);
+              }}
+              placeholder="描述发生了什么、何时开始，以及已尝试的步骤…"
+            />
+            <small>请勿填写密码、验证码或访问令牌。</small>
+            <button
+              className="primary"
+              disabled={
+                creating ||
+                newSubject.trim().length < 4 ||
+                newDescription.trim().length < 10
+              }
+            >
+              {creating ? "提交中…" : retryCreate ? "重试原提交" : "提交报障"}
+            </button>
+          </form>
+        )}
         {items.length === 0 ? (
-          <p className="muted">你还没有 AI 转人工的工单。</p>
+          <p className="muted">你还没有报障工单。</p>
         ) : (
           items.map((item) => (
             <button
@@ -296,7 +425,9 @@ export default function MyRequestsPanel({
               <span>
                 {labels[item.status] || item.status} · {item.priority}
               </span>
-              <small>AI 转人工 · {time(item.created_at)}</small>
+              <small>
+                {item.source} · {time(item.created_at)}
+              </small>
             </button>
           ))
         )}
@@ -360,12 +491,29 @@ export default function MyRequestsPanel({
               <div>
                 <h2>{detail.ticket.subject}</h2>
                 <p>
-                  来源：AI 转人工 · 状态：
+                  来源：{detail.ticket.source} · 状态：
                   {labels[detail.ticket.status] || detail.ticket.status} ·
                   接手人：{detail.ticket.assignee || "待分派"}
                 </p>
               </div>
             </div>
+            {detail.ticket.request && (
+              <section className="manual-request-detail">
+                <h3>
+                  报障内容 ·{" "}
+                  {(
+                    {
+                      network: "网络",
+                      account: "账号",
+                      software: "软件",
+                      hardware: "硬件",
+                      other: "其他",
+                    } as Record<string, string>
+                  )[detail.ticket.request.category] || "其他"}
+                </h3>
+                <p>{detail.ticket.request.description}</p>
+              </section>
+            )}
             <h3>处理进度</h3>
             <ol className="request-timeline">
               {detail.timeline.map((row, i) => (

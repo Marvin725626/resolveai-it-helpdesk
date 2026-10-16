@@ -133,3 +133,17 @@ Docker 部署 helper 使用独立 5184/8114 端口和独立 Compose project 配�
 部署中的同源 Nginx HTTP 验证了 SSE trace/result、离线报告及上述业务链。全部三个容器 force-recreate 后仍健康，关闭工单、5分评分、已发布知识向量行及活跃附件 SHA-256 保留。5184 返回 HTTP 200，8114 health.database 为 healthy，OpenAPI 版本1.8.0。
 
 PostgreSQL 恢复演练短暂停止该独立部署应用，生成 custom-format dump 与1个合成活跃附件，恢复到全新 UUID 数据库和独立附件目录；关闭工单、评分、知识向量行和附件哈希匹配。演练临时数据库已删除，原数据库/附件卷未覆盖，应用恢复运行。备份与恢复报告只保留在忽略目录 `.local/`，未提交。真实模型、企业连接器及生产环境恢复仍未验证。
+
+
+## v1.9.0 · 2026-10-16 · 主动报障
+
+- 核心后端39项通过；原报障跟进、通知、附件、解决评分、分诊模块分别在独立进程通过，共44项原有回归。新增 `test_manual_requests.py` 隔离生命周期测试通过，合计45项。
+- 新测试覆盖输入字段拒绝、清理后长度、凭据模式脱敏、相同请求重放与修改冲突、跨工作区拒绝访问、独立来源与描述、旧写接口阻断、公开回复、附件、解决确认和评分。手动提交不创建 AI run。
+- 前端 authored formatting 检查、TypeScript 与 Vite 生产构建通过（1920 modules）；Docker 前端镜像构建通过。
+- 真实 PostgreSQL 检查通过：fresh/repeat/旧版本升级保留数据、新提交记录表与新 head `d1a4f8c29b73`；两个同 ID 请求并发均成功且只产生一个工单、一个提交记录和一个客户，无孤儿记录；跨用户/租户隔离及处理后重试不重置状态通过。原向量检索、业务链和两类 CAS 检查继续通过。
+- 无截图浏览器验收 `scripts/smoke-manual-requests.cjs` 使用随机新建合成工作区：服务端建单后中断首个响应，重试保持原 ID 且只有一单；实际附件上传/下载 SHA-256 相同，支持回复通知可读，用户确认关闭并评分5分，刷新后保留；390px 无横向页面溢出，0个 pageerror。
+
+浏览器验收只允许显式开启合成写入且目标必须是 localhost/127.0.0.1。若本地未安装 Playwright，可通过 `PLAYWRIGHT_MODULE` 指定已有依赖，`CHROMIUM_PATH` 指定浏览器。设置 `RESOLVEAI_ALLOW_SYNTHETIC_WRITES=1` 后执行 `node scripts/smoke-manual-requests.cjs`；默认目标为5184，会新建合成工作区和工单，不复用现有账号，也不导出截图、密码或令牌。
+
+- 新版同源 `live-check`、三容器 `recreate-check` 与 PostgreSQL dump/restore 演练通过，新的验证清单包含手动提交的 request/user/ticket 关联与处理中状态。恢复后 `manual_request_ownership=true`；5个合成活跃附件全部校验匹配，临时恢复库已删除，原数据库与附件卷未覆盖。
+- 本机 SQLite 8104 与 Docker 8114 的 OpenAPI 均为1.9.0，均包含主动建单端点；5174与5184均返回HTTP 200。配置、合成账号及备份继续仅保存在本地忽略路径，未新增公开截图。

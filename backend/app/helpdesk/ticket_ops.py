@@ -59,12 +59,16 @@ async def notify_event(db, ticket, actor, event):
         state = labels[event.payload["to"]]
         recipients[ticket.assigned_agent_id] = ("status_changed", "工单状态更新",
             f"{actor.full_name} 将你负责的工单状态改为“{state}”。")
-    if event.event_type in ("support_reply", "status_changed", "requester_confirmed", "requester_reopened"):
-        from app.helpdesk.models import HelpdeskRun
-        run = await db.scalar(select(HelpdeskRun).where(HelpdeskRun.tenant_id == ticket.tenant_id,
+    async def requester_id():
+        from app.helpdesk.models import HelpdeskRun, ManualTicketSubmission
+        run_id = await db.scalar(select(HelpdeskRun.user_id).where(HelpdeskRun.tenant_id == ticket.tenant_id,
             HelpdeskRun.result["ticket_id"].as_string() == ticket.id).order_by(HelpdeskRun.created_at).limit(1))
-        if run:
-            recipients[run.user_id] = ("support_reply" if event.event_type == "support_reply" else "status_changed",
+        return run_id or await db.scalar(select(ManualTicketSubmission.user_id).where(
+            ManualTicketSubmission.tenant_id == ticket.tenant_id, ManualTicketSubmission.ticket_id == ticket.id).limit(1))
+    if event.event_type in ("support_reply", "status_changed", "requester_confirmed", "requester_reopened"):
+        owner_id = await requester_id()
+        if owner_id:
+            recipients[owner_id] = ("support_reply" if event.event_type == "support_reply" else "status_changed",
                 "工单有新回复" if event.event_type == "support_reply" else "工单状态更新",
                 "支持人员已回复你的工单。" if event.event_type == "support_reply" else "你的工单状态有更新。")
     if event.event_type == "requester_reply" and ticket.assigned_agent_id:
@@ -73,23 +77,19 @@ async def notify_event(db, ticket, actor, event):
         recipients[ticket.assigned_agent_id] = ("status_changed", "工单状态更新",
             "报障人已确认工单解决。" if event.event_type == "requester_confirmed" else "报障人表示问题仍未解决。")
     if event.event_type in ("attachment_added", "attachment_deleted"):
-        from app.helpdesk.models import HelpdeskRun
-        run = await db.scalar(select(HelpdeskRun).where(HelpdeskRun.tenant_id == ticket.tenant_id,
-            HelpdeskRun.result["ticket_id"].as_string() == ticket.id).order_by(HelpdeskRun.created_at).limit(1))
+        owner_id = await requester_id()
         kind = event.event_type
         message = (kind, "工单有新附件" if kind == "attachment_added" else "工单附件已移除",
             "工单新增了一份私有附件。" if kind == "attachment_added" else "工单的一份私有附件已移除。")
-        if run and (event.payload["direction"] == "support" or kind == "attachment_deleted"):
-            recipients[run.user_id] = message
+        if owner_id and (event.payload["direction"] == "support" or kind == "attachment_deleted"):
+            recipients[owner_id] = message
         if ticket.assigned_agent_id and (event.payload["direction"] == "requester" or kind == "attachment_deleted"):
             recipients[ticket.assigned_agent_id] = message
     if event.event_type == "priority_changed":
-        from app.helpdesk.models import HelpdeskRun
-        run = await db.scalar(select(HelpdeskRun).where(HelpdeskRun.tenant_id == ticket.tenant_id,
-            HelpdeskRun.result["ticket_id"].as_string() == ticket.id).order_by(HelpdeskRun.created_at).limit(1))
+        owner_id = await requester_id()
         message = ("priority_changed", "工单优先级更新", "工单优先级及演示处理目标已更新。")
-        if run:
-            recipients[run.user_id] = message
+        if owner_id:
+            recipients[owner_id] = message
         if ticket.assigned_agent_id:
             recipients[ticket.assigned_agent_id] = message
     recipients.pop(actor.id, None)

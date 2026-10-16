@@ -97,3 +97,13 @@ node scripts/smoke-browser.cjs
 4. SQLite 数据库和私有附件 bundle 要求先人工停止所有写入者，再执行 `scripts\recovery_bundle.py backup --offline-confirmed`。恢复仅允许写入全新的 `.local/restores` 目录。
 
 Docker/PostgreSQL 实测进度见[验证记录](VALIDATION.md)。这些操作是本地隔离演示和合成恢复演练，不代表生产切换或真实客户数据恢复能力。完整限制及命令见[部署说明](DEPLOYMENT.md)和[运维与备份](OPERATIONS.md)。
+
+
+## v1.9：不经过 AI 的主动报障
+
+1. 打开“我的报障”，新建工单，填写标题、IT 类别与具体故障现象，不填密码或令牌。
+2. 提交后在详情确认“主动报障”来源与问题内容，再上传一份合成日志或截图。
+3. 工程师从未接手队列找到这张待处理工单，接手后公开回复；报障人可看到通知和回复。
+4. 工程师提交公开解决记录，报障人确认解决并提交满意度。重新打开页面，核对处理记录、附件和评分仍在。
+
+主动报障不生成 AI 运行记录，演示中的工单和账号为合成内容。API、幂等与访问权限说明见[主动报障](MANUAL_REQUESTS.md)。
