@@ -87,3 +87,10 @@ cd E:\agent\resolveai
 SQLite backup bundle 与 `scripts/backup_sqlite.py` 的在线数据库快照用途不同。后者只备份数据库文件，不包括附件，也不代表数据库与文件系统的一致性快照。两者均不自动停止服务、上传备份或覆盖现有数据。PostgreSQL 使用上述独立 Compose 演练流程；SQLite bundle 不支持 PostgreSQL。
 
 更多日常维护边界见[运维与备份](OPERATIONS.md)，目前各项实测结果见[验证记录](VALIDATION.md)。
+
+
+## 升级到 2.0
+
+先停止旧应用写入并保存数据库、私有附件和配置。Windows 本地部署运行 `stop.ps1`，使用 `scripts/recovery_bundle.py backup --offline-confirmed` 保存 SQLite 和附件，再运行 `start.ps1`。启动脚本先执行 Alembic 升级，成功后启动应用；不要只对旧库调用 create_all。当前迁移 head 为 `f20b8c6d4192`。旧用户角色保留，旧邀请默认 SUPPORT_AGENT；新增员工账号必须由管理员以 REQUESTER 角色邀请。Docker 使用原私有配置运行 `scripts/docker_deploy.py up`，保留现有卷并在启动前迁移。
+
+PostgreSQL 使用独立 autocommit 迁移添加 REQUESTER 枚举值，以保证后续事务可以使用该值。存在员工用户或员工邀请时，角色迁移拒绝降级；请使用备份和完整应用版本恢复策略。服务目录迁移降级会删除目录与修订表，不用于日常回退。参见 [PostgreSQL ALTER TYPE](https://www.postgresql.org/docs/16/sql-altertype.html) 与 [Alembic autocommit_block](https://alembic.sqlalchemy.org/en/latest/api/runtime.html#alembic.runtime.migration.MigrationContext.autocommit_block)。

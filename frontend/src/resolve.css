@@ -2915,3 +2915,18 @@ select:focus-visible {
 .my-request-filters small {
   color: var(--text-muted, #64748b);
 }
+
+.service-request-snapshot dl {
+  display: grid;
+  gap: 0.8rem;
+  margin: 0;
+}
+.service-request-snapshot dt {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.service-request-snapshot dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

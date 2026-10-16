@@ -62,3 +62,12 @@ PostgreSQL/Docker 本地部署及合成 dump/restore 演练请参阅[部署说�
 相关来源：[Vite Windows 路径问题](https://github.com/advisories/GHSA-fx2h-pf6j-xcff)、[braces 深度模式问题](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)。
 
 CI 包含格式检查、CSV 检查、类型检查、生产构建和高等级 npm 审计检查。
+
+
+## 2.0 迁移检查
+
+停止旧应用并备份后，`start.ps1` 会先执行 `alembic upgrade head` 再启动后台。迁移失败时不会启动新写入进程。当前 head 为 `f20b8c6d4192`；旧邀请保留支持专员角色，新员工通过管理员邀请创建。不要用新代码的 `create_all` 代替旧库升级。
+
+服务目录发布、编辑、归档和恢复会生成新版本；工单申请快照独立于当前目录内容。排查重复提交时检查 `request_id` 和申请记录，重试应使用相同请求ID。模板冲突返回409，需重新加载模板并核对保留的答案。
+
+新增员工角色涉及 PostgreSQL 原生枚举，存在员工用户或员工邀请时角色迁移拒绝降级。日常回退应按已保存的数据库、附件和应用版本恢复，不执行目录表的破坏性降级。

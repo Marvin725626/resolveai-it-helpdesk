@@ -1,0 +1,225 @@
+.service-catalog-admin {
+  min-width: 0;
+}
+.catalog-toolbar,
+.catalog-actions,
+.catalog-fields-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.catalog-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.7fr) minmax(0, 1.6fr);
+  gap: 1rem;
+}
+.catalog-list {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  min-width: 0;
+}
+.catalog-list button {
+  display: grid;
+  gap: 0.25rem;
+  text-align: left;
+}
+.catalog-list button span {
+  font-size: 0.82rem;
+  opacity: 0.75;
+}
+.catalog-list button.selected {
+  outline: 2px solid var(--accent, currentColor);
+}
+.catalog-editor,
+.catalog-editor form {
+  min-width: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+.catalog-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.catalog-editor label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+.catalog-editor input:not([type="checkbox"]),
+.catalog-editor select,
+.catalog-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+}
+.catalog-fields-heading {
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+.catalog-fields-heading h3,
+.catalog-history h3,
+.catalog-preview h3 {
+  margin: 0;
+}
+.catalog-field {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 0.65rem;
+  padding: 0.8rem;
+}
+.catalog-check {
+  display: flex !important;
+  align-items: center;
+  gap: 0.5rem !important;
+}
+.catalog-check input {
+  width: auto;
+}
+.catalog-actions {
+  flex-wrap: wrap;
+}
+.catalog-preview,
+.catalog-history {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--border, currentColor);
+  padding-top: 0.9rem;
+}
+.catalog-preview h4,
+.catalog-preview p {
+  margin: 0;
+}
+.catalog-history details {
+  padding: 0.55rem;
+  border: 1px solid var(--border, currentColor);
+  border-radius: 0.5rem;
+}
+.catalog-history pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 18rem;
+  overflow: auto;
+}
+.catalog-message.error {
+  color: var(--danger, inherit);
+}
+.catalog-editor :focus-visible,
+.catalog-list :focus-visible {
+  outline: 2px solid var(--accent, currentColor);
+  outline-offset: 2px;
+}
+@media (max-width: 640px) {
+  .catalog-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .catalog-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .service-catalog-admin > .panel-title {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .catalog-toolbar {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+}
+
+.service-catalog-admin > .panel-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+.service-catalog-admin h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+.service-catalog-admin .panel-title p {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.service-catalog-admin button {
+  border: 1px solid #d4e6e4;
+  border-radius: 0.5rem;
+  background: #eff6f5;
+  color: var(--primary);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.service-catalog-admin button:hover:not(:disabled) {
+  background: #e0efed;
+}
+.service-catalog-admin button[type="submit"],
+.catalog-toolbar button:last-child {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.catalog-list button {
+  background: white;
+  border-color: var(--border);
+  overflow-wrap: anywhere;
+  padding: 0.85rem;
+}
+.catalog-list button.selected {
+  outline: none;
+  border-color: var(--primary);
+  background: #eff7f6;
+}
+.catalog-list button strong {
+  font-size: 0.84rem;
+}
+.catalog-list button span {
+  font-size: 0.7rem;
+}
+.catalog-editor label {
+  font-size: 0.78rem;
+}
+.catalog-editor h3 {
+  font-size: 0.84rem;
+}
+.catalog-field legend {
+  font-size: 0.76rem;
+  padding: 0 0.3rem;
+  color: var(--muted);
+}
+.catalog-message {
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.5rem;
+  background: #eff7f6;
+  color: var(--primary);
+  font-size: 0.8rem;
+  margin: 0 0 1rem;
+}
+.catalog-message.error {
+  background: #fff2ef;
+  color: #a54635;
+}
+.catalog-history summary {
+  font-size: 0.76rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.catalog-history pre {
+  font-size: 0.7rem;
+}
+.catalog-editor input[readonly] {
+  background: #f5f7fa;
+  color: var(--muted);
+}
+@media (max-width: 640px) {
+  .service-catalog-admin > .panel-title {
+    flex-direction: column;
+  }
+  .catalog-toolbar {
+    flex-wrap: wrap;
+  }
+}

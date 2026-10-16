@@ -1,3 +1,6 @@
+import ServiceRequestSnapshot, {
+  type ServiceSnapshot,
+} from "./ServiceRequestSnapshot";
 import TicketPriority from "./TicketPriority";
 import KnowledgeDraftAction from "./KnowledgeDraftAction";
 import { SupportResolution } from "./TicketResolution";
@@ -12,7 +15,11 @@ export type TicketSummary = {
   priority: string;
   description?: string;
   source?: "manual" | "ai" | "legacy";
-  request?: { description: string; category: string };
+  request?: {
+    description: string;
+    category: string;
+    service?: ServiceSnapshot;
+  };
   reason: string;
   created_at: string;
   updated_at: string;
@@ -901,7 +908,9 @@ export default function TicketOps({
                   </button>
                 </div>
               </form>
-              {detail.ticket.source === "manual" ? (
+              {detail.ticket.request?.service ? (
+                <ServiceRequestSnapshot data={detail.ticket.request.service} />
+              ) : detail.ticket.source === "manual" ? (
                 <section className="manual-request-detail">
                   <h3>
                     报障内容 ·{" "}

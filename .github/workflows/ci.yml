@@ -45,6 +45,8 @@ jobs:
           python -m pytest tests/test_resolveai.py -q
           python -m pytest tests/test_manual_requests.py -q
           python -m pytest tests/test_invitations.py -q
+          python -m pytest tests/test_requester_roles.py -q
+          python -m pytest tests/test_service_catalog.py -q
           python -m pytest tests/test_notifications.py -q
           python -m pytest tests/test_requester_followup.py -q
           python -m pytest tests/test_attachments.py -q

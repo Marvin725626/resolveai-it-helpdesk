@@ -12,10 +12,23 @@ if (!$resolveNode) { throw 'Node.js 22+ is required; see README.md.' }
 foreach ($resolvePort in @($ApiPort, $WebPort)) {
     if (Get-NetTCPConnection -State Listen -LocalPort $resolvePort -ErrorAction SilentlyContinue) { throw "Port $resolvePort is already in use. Stop the old ResolveAI processes or choose another port." }
 }
+# Upgrade before starting writers; this also handles databases created by older bootstrap mode.
+Push-Location (Join-Path $resolveRoot 'backend')
+try {
+    & $resolvePython -m alembic upgrade head
+    if ($LASTEXITCODE -ne 0) { throw 'Database migration failed; app was not started. Preserve your backup and inspect the migration output.' }
+} finally { Pop-Location }
 $resolveLog = Join-Path $resolveRoot '.local\logs'
 New-Item -ItemType Directory -Force -Path $resolveLog | Out-Null
 $env:RESOLVEAI_API_URL = "http://127.0.0.1:$ApiPort"
-$resolveApi = Start-Process -FilePath $resolvePython -ArgumentList @('-m','uvicorn','app.main:app','--host','127.0.0.1','--port',"$ApiPort") -WorkingDirectory (Join-Path $resolveRoot 'backend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $resolveLog 'api.out.log') -RedirectStandardError (Join-Path $resolveLog 'api.err.log')
+$resolvePreviousSchemaMode = [Environment]::GetEnvironmentVariable('APP_SCHEMA_MODE', 'Process')
+try {
+    $env:APP_SCHEMA_MODE = 'migrate'
+    $resolveApi = Start-Process -FilePath $resolvePython -ArgumentList @('-m','uvicorn','app.main:app','--host','127.0.0.1','--port',"$ApiPort") -WorkingDirectory (Join-Path $resolveRoot 'backend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $resolveLog 'api.out.log') -RedirectStandardError (Join-Path $resolveLog 'api.err.log')
+} finally {
+    if ($null -eq $resolvePreviousSchemaMode) { Remove-Item Env:APP_SCHEMA_MODE -ErrorAction SilentlyContinue }
+    else { $env:APP_SCHEMA_MODE = $resolvePreviousSchemaMode }
+}
 try {
     $resolveApiReady = $false
     for ($resolveAttempt = 0; $resolveAttempt -lt 30; $resolveAttempt++) {

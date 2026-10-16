@@ -40,6 +40,18 @@ def migrate(url, revision="head"):
         raise RuntimeError("Migration failed: " + error[-3500:])
 
 
+def downgrade(url, revision):
+    environment = {**os.environ, "DATABASE_URL": url, "APP_SCHEMA_MODE": "migrate", "IT_DEMO_ENABLED": "false"}
+    result = subprocess.run([sys.executable, "-m", "alembic", "downgrade", revision], cwd=BACKEND,
+                            env=environment, capture_output=True, text=True)
+    if result.returncode:
+        error = result.stderr
+        for secret in (make_url(url).password, os.environ.get("AUTH_SECRET"), os.environ.get("IT_DEMO_PASSWORD")):
+            if secret:
+                error = error.replace(secret, "[redacted]")
+        raise RuntimeError("Downgrade failed: " + error[-3500:])
+
+
 async def business(url, attachment_root, live=False):
     os.environ.update(DATABASE_URL=url, APP_SCHEMA_MODE="migrate", IT_DEMO_ENABLED="false",
                       IT_ATTACHMENT_ROOT=str(attachment_root), DEFAULT_LLM_PROVIDER="mock", IT_EMBEDDING_PROVIDER="local")
@@ -75,6 +87,18 @@ async def business(url, attachment_root, live=False):
             support = await api("POST", "/auth/invitations/accept", json={"email":f"support-{suffix}@example.com",
                 "token":invitation["token"],"password":password,"full_name":"PG support"})
             support_token = support["access_token"]
+            # Exercise the newly-added PostgreSQL enum role through a real invitation.
+            requester_email = f"employee-{suffix}@example.com"
+            requester_invite = await api("POST", "/auth/invitations", token, status=201,
+                json={"email":requester_email,"role":"REQUESTER"})
+            requester = await api("POST", "/auth/invitations/accept", status=200, json={
+                "email":requester_email,"token":requester_invite["token"],"password":password,"full_name":"PG employee"})
+            requester_token = requester["access_token"]
+            require(requester["user"]["role"] == "REQUESTER", "requester invitation persists enum role")
+            await api("GET", "/helpdesk/ticket-queue", requester_token, status=403)
+            await api("GET", "/helpdesk/service-catalog-admin", requester_token, status=403)
+            await api("GET", "/helpdesk/portal/overview", requester_token)
+            await api("GET", "/helpdesk/service-catalog", requester_token)
             # Manual requests must be independent of AI runs, including racing retries.
             manual_body = {"request_id":str(uuid4()), "subject":"PG主动报障并发验收", "category":"network",
                 "description":"仅用于合成验收的办公网络故障，重连后仍无法访问测试服务。"}
@@ -104,9 +128,57 @@ async def business(url, attachment_root, live=False):
             require(len((await api("GET",manual_mine+"/replies",token))["items"])==1,"manual requester sees public reply")
             require(any(n["ticket_id"]==manual_id and n["kind"]=="support_reply" for n in
                 (await api("GET","/helpdesk/notifications",token))["items"]),"manual requester notified")
+
+            # Published catalog submission is a structured manual ticket. Race one
+            # request id, then prove CAS, archive hiding and immutable replay.
+            catalog_admin = "/helpdesk/service-catalog-admin"
+            catalog_field = [{"key":"device_name","label":"设备名称","type":"text","required":True},
+                {"key":"urgency","label":"处理时段","type":"select","required":True,"options":["今天","本周"]}]
+            catalog = await api("POST",catalog_admin,token,status=201,json={"request_id":str(uuid4()),
+                "code":"pg-device-access","title":"PG设备接入申请","summary":"PG真实PostgreSQL目录验收",
+                "category":"network","fields":catalog_field,"status":"published"})
+            catalog_item = catalog["item"]
+            catalog_submit_path = "/helpdesk/service-catalog/"+catalog_item["id"]+"/submit"
+            catalog_submit = {"request_id":str(uuid4()),"expected_version":catalog_item["version"],
+                "answers":{"device_name":"PG synthetic laptop","urgency":"今天"}}
+            catalog_responses = await asyncio.gather(*(client.post("/api/v1"+catalog_submit_path,
+                headers={"Authorization":"Bearer "+requester_token},json=catalog_submit) for _ in range(2)))
+            require(all(r.status_code==201 for r in catalog_responses), "catalog concurrent same-ID submissions both succeed")
+            catalog_ids = {r.json()["ticket_id"] for r in catalog_responses}
+            require(len(catalog_ids)==1 and sorted(r.json()["replayed"] for r in catalog_responses)==[False,True],
+                "catalog same-ID race creates exactly one ticket")
+            catalog_ticket_id = catalog_ids.pop()
+            catalog_ticket = await api("GET","/helpdesk/my-tickets/"+catalog_ticket_id,requester_token)
+            original_snapshot = catalog_ticket["ticket"]["request"].get("service")
+            require(original_snapshot and original_snapshot["item_id"]==catalog_item["id"] and
+                original_snapshot["version"]==catalog_item["version"] and
+                any(field["key"]=="device_name" and field["answer"]=="PG synthetic laptop" for field in original_snapshot["fields"]),
+                "requester sees structured catalog snapshot")
+            stale = {"expected_version":catalog_item["version"],"code":catalog_item["code"],"title":"PG设备接入申请",
+                "summary":catalog_item["summary"],"category":catalog_item["category"],"fields":catalog_field,"status":"published"}
+            edited = await api("PUT",catalog_admin+"/"+catalog_item["id"],token,json={**stale,"title":"PG设备接入申请新版"})
+            require(edited["item"]["version"]==catalog_item["version"]+1,"catalog CAS increments version")
+            await api("PUT",catalog_admin+"/"+catalog_item["id"],token,status=409,json=stale)
+            archived = {**stale,"expected_version":edited["item"]["version"],"status":"archived",
+                "title":edited["item"]["title"]}
+            await api("PUT",catalog_admin+"/"+catalog_item["id"],token,json=archived)
+            await api("GET","/helpdesk/service-catalog/"+catalog_item["id"],requester_token,status=404)
+            replay = await api("POST",catalog_submit_path,requester_token,status=201,json=catalog_submit)
+            require(replay["replayed"] and replay["ticket_id"]==catalog_ticket_id,"catalog replay survives edit and archive")
+            after_replay = await api("GET","/helpdesk/my-tickets/"+catalog_ticket_id,requester_token)
+            require(after_replay["ticket"]["request"]["service"]==original_snapshot,
+                "archived replay preserves submitted service snapshot")
             async with engine.connect() as connection:
-                require(await connection.scalar(text("SELECT count(*) FROM resolveai_manual_ticket_submissions WHERE tenant_id=:tenant"),{"tenant":owner["user"]["tenant_id"]})==1,"one manual ownership record")
-                require(await connection.scalar(text("SELECT count(*) FROM customers WHERE tenant_id=:tenant"),{"tenant":owner["user"]["tenant_id"]})==1,"racing retry leaves no orphan customer")
+                require(await connection.scalar(text("SELECT count(*) FROM resolveai_service_catalog_items WHERE tenant_id=:tenant"),
+                    {"tenant":owner["user"]["tenant_id"]})==1,"catalog item persists in PostgreSQL")
+                require(await connection.scalar(text("SELECT count(*) FROM resolveai_service_catalog_revisions WHERE item_id=:id"),
+                    {"id":catalog_item["id"]})==3,"catalog create/edit/archive revisions persist")
+                require(await connection.scalar(text("SELECT count(*) FROM resolveai_manual_ticket_submissions WHERE ticket_id=:id"),
+                    {"id":catalog_ticket_id})==1,"catalog race creates one ownership record")
+                require(await connection.scalar(text("SELECT count(*) FROM resolveai_manual_ticket_submissions WHERE tenant_id=:tenant AND user_id=:user"),
+                    {"tenant":owner["user"]["tenant_id"],"user":owner["user"]["id"]})==1,"one owner manual ownership record")
+                require(await connection.scalar(text("SELECT count(*) FROM customers WHERE tenant_id=:tenant"),
+                    {"tenant":owner["user"]["tenant_id"]})==2,"manual and catalog request races leave no orphan customer")
             run_body = {"request_id":str(uuid4()),"question":"VPN认证失败，请转人工处理"}
             if live:
                 events=[]
@@ -124,12 +196,12 @@ async def business(url, attachment_root, live=False):
             ticket_id = run["ticket_id"]
             # SQL source filters must behave identically on PostgreSQL and SQLite.
             manual_page = await api("GET","/helpdesk/ticket-queue?source=manual",token)
-            require(manual_page["total"]==1 and manual_page["items"][0]["id"]==manual_id and manual_page["items"][0]["source"]=="manual","queue manual provenance")
+            require(manual_page["total"]==2 and {r["id"] for r in manual_page["items"]}=={manual_id,catalog_ticket_id} and all(r["source"]=="manual" for r in manual_page["items"]),"queue manual provenance")
             ai_page = await api("GET","/helpdesk/ticket-queue?source=ai",token)
             require(ai_page["total"]==1 and ai_page["items"][0]["id"]==ticket_id,"queue AI provenance")
             require((await api("GET","/helpdesk/ticket-queue?source=legacy",token))["total"]==0,"legacy is not guessed from title")
             exported = await api("GET","/helpdesk/ticket-queue/export?source=manual",token)
-            require(exported["total"]==manual_page["total"] and [r["id"] for r in exported["items"]]==[manual_id],"export uses same source predicate")
+            require(exported["total"]==manual_page["total"] and {r["id"] for r in exported["items"]}=={manual_id,catalog_ticket_id},"export uses same source predicate")
             private_marker = "internal-diagnostic-"+suffix
             async with engine.begin() as connection:
                 context_json = json.loads(await connection.scalar(text("SELECT description FROM tickets WHERE tenant_id=:tenant AND id=:id"),{"tenant":owner["user"]["tenant_id"],"id":ticket_id}))
@@ -223,6 +295,9 @@ async def business(url, attachment_root, live=False):
                     "draft_id":draft_id, "source_code":published["source_code"], "attachment_id":preserved["item"]["id"],
                     "storage_key":key, "sha256":preserved["item"]["sha256"], "rating":5,
                     "manual_ticket_id":manual_id, "manual_request_id":manual_body["request_id"], "manual_user_id":owner["user"]["id"]}
+                manifest.update({"catalog_ticket_id":catalog_ticket_id,"catalog_request_id":catalog_submit["request_id"],
+                    "catalog_item_id":catalog_item["id"],"catalog_version":catalog_item["version"],
+                    "requester_user_id":requester["user"]["id"]})
                 output=Path("/tmp/resolveai-deployment-fixture.json")
                 descriptor=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
                 with os.fdopen(descriptor,"w",encoding="utf-8") as target:
@@ -249,12 +324,21 @@ async def main():
         upgrade_url=source.set(drivername="postgresql+asyncpg",database=upgrade).render_as_string(hide_password=False)
         await asyncio.to_thread(migrate,fresh_url)
         await asyncio.to_thread(migrate,fresh_url)  # repeat startup is harmless
-        await asyncio.to_thread(migrate,upgrade_url,"53df04c2178b")
+        # Build then roll back to the last v1.10 revision. Alembic downgrade
+        # preserves the v1.10 queue/manual tables while removing the v2 additions.
+        await asyncio.to_thread(migrate,upgrade_url)
+        await asyncio.to_thread(downgrade,upgrade_url,"d1a4f8c29b73")
         previous=await asyncpg.connect(host=source.host,port=source.port or 5432,user=source.username,password=source.password,database=upgrade)
         try:
-            # Reproduce an older deployment missing both latest additive tables.
-            await previous.execute("DROP TABLE resolveai_saved_queue_views")
-            await previous.execute("DROP TABLE resolveai_manual_ticket_submissions")
+            # Reconstruct the pre-v2 PostgreSQL role enum exactly. PostgreSQL
+            # cannot remove an enum label in place, so replace the type after
+            # Alembic has downgraded the invitation column.
+            await previous.execute("DROP TABLE IF EXISTS resolveai_service_catalog_revisions")
+            await previous.execute("DROP TABLE IF EXISTS resolveai_service_catalog_items")
+            await previous.execute("ALTER TYPE userrole RENAME TO userrole_v2_fixture")
+            await previous.execute("CREATE TYPE userrole AS ENUM ('PLATFORM_ADMIN','TENANT_OWNER','TENANT_ADMIN','SUPPORT_AGENT')")
+            await previous.execute("ALTER TABLE users ALTER COLUMN role TYPE userrole USING role::text::userrole")
+            await previous.execute("DROP TYPE userrole_v2_fixture")
             await previous.execute("CREATE TABLE migration_sentinel (value text PRIMARY KEY)")
             await previous.execute("INSERT INTO migration_sentinel VALUES ('preserve-existing-data')")
         finally:
@@ -265,14 +349,21 @@ async def main():
             require(await checked.fetchval("SELECT value FROM migration_sentinel")=="preserve-existing-data","upgrade preserves data")
             require(await checked.fetchval("SELECT to_regclass('resolveai_saved_queue_views')") is not None,"upgrade adds table")
             require(await checked.fetchval("SELECT to_regclass('resolveai_manual_ticket_submissions')") is not None,"upgrade adds manual request ownership table")
-            require(await checked.fetchval("SELECT version_num FROM alembic_version")=="d1a4f8c29b73","upgrade revision")
+            require(await checked.fetchval("SELECT version_num FROM alembic_version")=="f20b8c6d4192","upgrade revision")
+            invitation_columns = await checked.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='invitations'")
+            require("role" in {row["column_name"] for row in invitation_columns},"upgrade adds invitation role")
+            requester_enum = await checked.fetchval("SELECT enumlabel FROM pg_enum JOIN pg_type ON pg_type.oid=pg_enum.enumtypid WHERE pg_type.typname='userrole' AND enumlabel='REQUESTER'")
+            require(requester_enum=="REQUESTER","upgrade adds PostgreSQL REQUESTER enum value")
+            require(await checked.fetchval("SELECT 'REQUESTER'::userrole::text")=="REQUESTER","REQUESTER enum value is usable")
         finally:
             await checked.close()
         with tempfile.TemporaryDirectory(prefix="resolveai-pg-attachments-") as storage:
             await business(fresh_url,Path(storage))
         print(json.dumps({"passed":True,"database":"PostgreSQL","migrations":["fresh","repeat","upgrade-preserves-data"],
             "pgvector_hybrid_search":True,"resolution_rating_draft_publish":True,"attachment_bytes_delete":True,
-            "scoped_concurrent_CAS_cases":2,"manual_submission_race_and_isolation":True,"source_filters_and_private_search":True,"source_database_untouched":True}))
+            "scoped_concurrent_CAS_cases":2,"manual_submission_race_and_isolation":True,"service_catalog_race_CAS_archive_replay":True,
+            "requester_invitation_and_staff_route_denial":True,"v110_upgrade_requester_enum":True,
+            "source_filters_and_private_search":True,"source_database_untouched":True}))
     finally:
         for name in databases:
             # Names are generated UUIDs, never caller-controlled. Drop only our new DBs.

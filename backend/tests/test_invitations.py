@@ -1,4 +1,7 @@
 import asyncio
+import os
+import tempfile
+from pathlib import Path
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -6,6 +9,10 @@ import httpx
 import pytest
 import pytest_asyncio
 from sqlalchemy import func, select, update
+
+# This module runs in its own process, against a fresh private database.
+_invitation_root = Path(tempfile.mkdtemp(prefix='resolveai-invitations-'))
+os.environ['DATABASE_URL'] = 'sqlite+aiosqlite:///' + (_invitation_root / 'test.db').as_posix()
 
 from app.core.database import AsyncSessionLocal
 from app.main import app

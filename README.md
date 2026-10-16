@@ -1,4 +1,4 @@
-# ResolveAI · 企业 IT HelpDesk Agent
+# ResolveAI 2.0 · 员工自助与 IT 支持协作
 
 基于 [AI SupportPro](https://github.com/theclevertrader/ai-supportpro) 的 IT 支持场景改造，保留原始 MIT 许可证和版权。来源提交与改动范围见 [NOTICE.md](NOTICE.md) 和 [UPSTREAM.json](UPSTREAM.json)，原项目说明见 [README.upstream.md](README.upstream.md)。这是可运行的本地开发 MVP，覆盖证据诊断、人工交接与运营观测。
 
@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.10 工单查找](docs/FINDING_TICKETS.md) · [v1.9 主动报障](docs/MANUAL_REQUESTS.md) · [v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[2.0 员工门户与服务目录](docs/V2_EMPLOYEE_PORTAL.md) · [v1.10 工单查找](docs/FINDING_TICKETS.md) · [v1.9 主动报障](docs/MANUAL_REQUESTS.md) · [v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -29,7 +29,24 @@ flowchart LR
     D --> M[运营看板与导出]
 ```
 
-## 本批完善：工单查找与来源分流
+## 2.0：从员工申请到支持处理
+
+- 员工门户：专属员工身份，查看本人请求和通知，按服务表单提交申请。
+- 服务目录：管理员配置字段、发布或归档服务，版本冲突保护和修订记录。
+- 申请快照：工单保留提交时的表单版本与答案，后续编辑不改写旧申请。
+- 处理闭环：复用工程师分派、公开沟通、私有附件、解决记录及员工确认评分。
+
+```mermaid
+flowchart LR
+    A[管理员配置并发布服务] --> B[员工填写结构化表单]
+    B --> C[待处理工单与版本快照]
+    C --> D[工程师接手与公开回复]
+    D --> E[解决记录]
+    E --> F[员工确认与评分]
+    D --> G[员工个人通知]
+```
+
+## 工单查找与来源分流
 
 - 我的报障支持关键词、状态、来源组合筛选，按匹配结果分页。
 - 支持队列区分主动报障、AI 转人工与历史工单，CSV 和保存视图使用相同来源条件。

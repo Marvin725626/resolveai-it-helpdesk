@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.database import get_db
+from app.helpdesk.catalog_snapshot import service_snapshot
 from app.helpdesk.models import HelpdeskRun, RunbookChunk, HelpdeskTicketEvent, ManualTicketSubmission
 from app.helpdesk.ticket_source import ticket_source_expression
 from app.helpdesk.retrieval import embedding_identity, index_runbook
@@ -222,6 +223,9 @@ async def ticket_detail(ticket_id: UUID, user: User = Depends(get_current_user),
     detail_ticket["source"] = source_code
     if submission:
         detail_ticket["request"] = {"description": submission.payload["description"], "category": submission.payload["category"]}
+        snapshot = service_snapshot(submission.payload)
+        if snapshot:
+            detail_ticket["request"]["service"] = snapshot
     return {"ticket": detail_ticket, "event_count": count,
         "can_manage_assignment": user.role in (UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN),
         "has_more": has_more, "next_before": events[-1].sequence if has_more else None,

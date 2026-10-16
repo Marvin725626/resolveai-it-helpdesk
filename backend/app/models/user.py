@@ -11,6 +11,7 @@ class UserRole(str, Enum):
     TENANT_OWNER = "TENANT_OWNER"
     TENANT_ADMIN = "TENANT_ADMIN"
     SUPPORT_AGENT = "SUPPORT_AGENT"
+    REQUESTER = "REQUESTER"
 
 
 class User(Base):

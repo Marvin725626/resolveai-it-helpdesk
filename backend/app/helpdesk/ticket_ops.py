@@ -97,7 +97,7 @@ async def notify_event(db, ticket, actor, event):
         return
     active = (await db.scalars(select(User.id).where(User.id.in_(recipients),
         User.tenant_id == ticket.tenant_id, User.is_active.is_(True),
-        User.role.in_((UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN, UserRole.SUPPORT_AGENT))))).all()
+        User.role.in_((UserRole.TENANT_OWNER, UserRole.TENANT_ADMIN, UserRole.SUPPORT_AGENT, UserRole.REQUESTER))))).all()
     if active:
         # Resolve the parent FK before notification inserts, still in the same transaction.
         await db.flush([event])

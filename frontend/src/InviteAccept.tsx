@@ -81,7 +81,7 @@ export default function InviteAccept() {
         </a>
         <div className="login-copy">
           <span className="eyebrow light">SUPPORT WORKSPACE</span>
-          <h1>加入支持团队</h1>
+          <h1>加入工作区</h1>
           <p>设置个人账号，开始参与工作区中的 IT 支持与工单处理。</p>
         </div>
         <small>邀请链接为一次性凭证，请勿转发给其他人。</small>
@@ -99,7 +99,7 @@ export default function InviteAccept() {
           {status === "ready" ? (
             <>
               <p className="muted">
-                请使用邀请发送到的邮箱。你将以支持专员身份加入。
+                请使用邀请发送到的邮箱。你将按邀请设置的角色加入工作区。
               </p>
               <form onSubmit={accept}>
                 <label>

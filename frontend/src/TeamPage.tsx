@@ -13,6 +13,7 @@ type Member = {
 type Invitation = {
   id: string;
   email: string;
+  role: string;
   status: string;
   created_at: string;
   expires_at: string;
@@ -26,6 +27,7 @@ const roleName: Record<string, string> = {
   TENANT_OWNER: "工作区所有者",
   TENANT_ADMIN: "管理员",
   SUPPORT_AGENT: "支持专员",
+  REQUESTER: "员工",
 };
 const statusName: Record<string, string> = {
   pending: "待接受",
@@ -37,6 +39,9 @@ const statusName: Record<string, string> = {
 export default function TeamPage({ api }: { api: Api }) {
   const [roster, setRoster] = useState<Roster>();
   const [email, setEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"SUPPORT_AGENT" | "REQUESTER">(
+    "SUPPORT_AGENT",
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [inviteLink, setInviteLink] = useState("");
@@ -63,12 +68,13 @@ export default function TeamPage({ api }: { api: Api }) {
     try {
       const invite = await api<{ token: string }>("/auth/invitations", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, role: inviteRole }),
       });
       setInviteLink(
         `${window.location.origin}/invite#${encodeURIComponent(invite.token)}`,
       );
       setEmail("");
+      setInviteRole("SUPPORT_AGENT");
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "无法创建邀请。");
@@ -154,8 +160,8 @@ export default function TeamPage({ api }: { api: Api }) {
             <MailPlus size={19} />
           </span>
           <div>
-            <h2>邀请支持专员</h2>
-            <p>新成员将固定获得支持专员权限。</p>
+            <h2>邀请工作区成员</h2>
+            <p>选择新成员加入后的工作区角色。</p>
           </div>
         </div>
         <form className="team-invite-form" onSubmit={create}>
@@ -174,6 +180,17 @@ export default function TeamPage({ api }: { api: Api }) {
               <MailPlus size={16} />
             </button>
           </div>
+          <label htmlFor="invite-role">邀请角色</label>
+          <select
+            id="invite-role"
+            value={inviteRole}
+            onChange={(event) =>
+              setInviteRole(event.target.value as "SUPPORT_AGENT" | "REQUESTER")
+            }
+          >
+            <option value="SUPPORT_AGENT">支持专员</option>
+            <option value="REQUESTER">员工</option>
+          </select>
         </form>
         <div className="config-note">
           <strong>手动发送邀请链接</strong>
@@ -217,6 +234,7 @@ export default function TeamPage({ api }: { api: Api }) {
             <thead>
               <tr>
                 <th>受邀邮箱</th>
+                <th>邀请角色</th>
                 <th>状态</th>
                 <th>创建时间</th>
                 <th>有效期至</th>
@@ -227,6 +245,7 @@ export default function TeamPage({ api }: { api: Api }) {
               {(roster?.invitations ?? []).map((invite) => (
                 <tr key={invite.id}>
                   <td>{invite.email}</td>
+                  <td>{roleName[invite.role] ?? invite.role}</td>
                   <td>{statusName[invite.status] ?? invite.status}</td>
                   <td>{date(invite.created_at)}</td>
                   <td>{date(invite.expires_at)}</td>
@@ -246,7 +265,7 @@ export default function TeamPage({ api }: { api: Api }) {
               ))}
               {roster && roster.invitations.length === 0 && (
                 <tr>
-                  <td colSpan={5}>尚无邀请记录。</td>
+                  <td colSpan={6}>尚无邀请记录。</td>
                 </tr>
               )}
             </tbody>

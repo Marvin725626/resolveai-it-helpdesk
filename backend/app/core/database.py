@@ -57,6 +57,7 @@ async def init_db() -> None:
     import app.models.analytics  # noqa
     import app.models.audit_log  # noqa
     import app.helpdesk.models  # noqa
+    import app.helpdesk.catalog_models  # noqa
 
     async with engine.begin() as conn:
         if conn.dialect.name == "postgresql":

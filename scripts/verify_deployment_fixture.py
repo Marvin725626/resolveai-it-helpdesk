@@ -31,10 +31,29 @@ async def verify(manifest):
             manual = {"tenant_id":manifest["tenant_id"],"ticket_id":manifest["manual_ticket_id"],
                 "request_id":manifest["manual_request_id"],"user_id":manifest["manual_user_id"]}
             assert await connection.scalar(text("SELECT count(*) FROM resolveai_manual_ticket_submissions s JOIN tickets t ON t.id=s.ticket_id AND t.tenant_id=s.tenant_id WHERE s.tenant_id=:tenant_id AND s.ticket_id=:ticket_id AND s.request_id=:request_id AND s.user_id=:user_id AND t.status='IN_PROGRESS'"),manual)==1, "manual requester ownership did not persist"
-        assert await connection.scalar(text("SELECT version_num FROM alembic_version"))=="d1a4f8c29b73", "schema revision mismatch"
+        catalog = False
+        if manifest.get("catalog_ticket_id"):
+            service = {"tenant_id":manifest["tenant_id"],"ticket_id":manifest["catalog_ticket_id"],
+                "request_id":manifest["catalog_request_id"],"item_id":manifest["catalog_item_id"],
+                "version":manifest["catalog_version"]}
+            row = (await connection.execute(text("SELECT s.payload->'service_input' AS service_input,t.status "
+                "FROM resolveai_manual_ticket_submissions s JOIN tickets t ON t.id=s.ticket_id AND t.tenant_id=s.tenant_id "
+                "WHERE s.tenant_id=:tenant_id AND s.ticket_id=:ticket_id AND s.request_id=:request_id"),service)).one()
+            service_input = json.loads(row.service_input) if isinstance(row.service_input, str) else row.service_input
+            assert row.status=="OPEN" and service_input["item_id"]==service["item_id"] and service_input["version"]==service["version"], "catalog ticket snapshot did not persist"
+            item_status = await connection.scalar(text("SELECT status FROM resolveai_service_catalog_items WHERE tenant_id=:tenant_id AND id=:item_id"),service)
+            assert item_status=="archived", "catalog archival did not persist"
+            revisions = await connection.scalar(text("SELECT count(*) FROM resolveai_service_catalog_revisions WHERE item_id=:item_id"),service)
+            assert revisions==3, "catalog revisions did not persist"
+            if manifest.get("requester_user_id"):
+                role = await connection.scalar(text("SELECT role::text FROM users WHERE tenant_id=:tenant_id AND id=:user_id"),
+                    {"tenant_id":service["tenant_id"],"user_id":manifest["requester_user_id"]})
+                assert role=="REQUESTER", "requester role did not persist"
+            catalog = True
+        assert await connection.scalar(text("SELECT version_num FROM alembic_version"))=="f20b8c6d4192", "schema revision mismatch"
         assert await connection.scalar(text("SELECT to_regclass('resolveai_manual_ticket_submissions')")) is not None, "manual request ownership table missing"
     await engine.dispose()
-    print(json.dumps({"fixture_verified":True,"ticket_closed":True,"rating":manifest["rating"],"published_vector_rows":True,"attachment_sha256_match":True,"manual_request_ownership":bool(manifest.get("manual_ticket_id"))}))
+    print(json.dumps({"fixture_verified":True,"ticket_closed":True,"rating":manifest["rating"],"published_vector_rows":True,"attachment_sha256_match":True,"manual_request_ownership":bool(manifest.get("manual_ticket_id")),"service_catalog_snapshot":catalog}))
 
 
 if __name__=="__main__":

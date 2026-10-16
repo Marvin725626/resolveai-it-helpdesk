@@ -1,3 +1,6 @@
+import ServiceRequestSnapshot, {
+  type ServiceSnapshot,
+} from "./ServiceRequestSnapshot";
 import { RequesterResolution } from "./TicketResolution";
 import TicketAttachments from "./TicketAttachments";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -17,7 +20,13 @@ type Item = {
   source_code?: "manual" | "ai" | "legacy";
 };
 type Detail = {
-  ticket: Item & { request?: { description: string; category: string } };
+  ticket: Item & {
+    request?: {
+      description: string;
+      category: string;
+      service?: ServiceSnapshot;
+    };
+  };
   timeline: {
     type: string;
     status?: string;
@@ -673,7 +682,10 @@ export default function MyRequestsPanel({
                 </p>
               </div>
             </div>
-            {detail.ticket.request && (
+            {detail.ticket.request?.service && (
+              <ServiceRequestSnapshot data={detail.ticket.request.service} />
+            )}
+            {detail.ticket.request && !detail.ticket.request.service && (
               <section className="manual-request-detail">
                 <h3>
                   报障内容 ·{" "}

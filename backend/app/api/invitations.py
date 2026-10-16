@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Literal
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,7 @@ def _aware(value: datetime) -> datetime:
 
 class InviteCreate(BaseModel):
     email: EmailStr
+    role: Literal["REQUESTER", "SUPPORT_AGENT"] = "SUPPORT_AGENT"
 
 
 class TokenRequest(BaseModel):
@@ -81,6 +83,7 @@ async def list_invitations(
         invitations.append({
             "id": row.id,
             "email": row.email,
+            "role": row.role or UserRole.SUPPORT_AGENT.value,
             "status": state,
             "created_at": row.created_at,
             "expires_at": row.expires_at,
@@ -127,6 +130,7 @@ async def create_invitation(
     invitation = Invitation(
         tenant_id=tenant.id,
         email=email,
+        role=data.role,
         token_hash=_token_hash(raw_token),
         invited_by_user_id=manager.id,
         created_at=now,
@@ -139,6 +143,7 @@ async def create_invitation(
     return {
         "id": invitation.id,
         "email": invitation.email,
+        "role": invitation.role,
         "token": raw_token,
         "expires_at": invitation.expires_at,
         "delivery": "Copy this link and send it to the invitee. No email is sent.",
@@ -247,7 +252,7 @@ async def accept_invitation(data: InviteAccept, db: AsyncSession = Depends(get_d
         email=email,
         full_name=data.full_name,
         hashed_password=get_password_hash(data.password),
-        role=UserRole.SUPPORT_AGENT,
+        role=UserRole(invitation.role or UserRole.SUPPORT_AGENT.value),
         is_active=True,
     )
     db.add(user)

@@ -1,9 +1,10 @@
 from typing import Generator, Optional, List
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import decode_access_token
 from app.core.token_blacklist import is_token_revoked
 from app.models.user import User, UserRole
@@ -12,7 +13,59 @@ from app.models.tenant import Tenant
 security_scheme = HTTPBearer(auto_error=False)
 
 
+def _requester_route_allowed(request: Request) -> bool:
+    """Exact route/method allowlist for the employee-facing account."""
+    route = request.scope.get("route")
+    path = getattr(route, "path", "")
+    method = request.method.upper()
+    # Router prefixes may be applied during inclusion, so compare the registered
+    # template with the exact API path suffix, never an open-ended prefix.
+    prefix = settings.API_V1_STR.rstrip("/")
+    if prefix and path.startswith(prefix + "/"):
+        path = path[len(prefix):]
+    fixed = {
+        ("GET", "/auth/me"), ("POST", "/auth/logout"),
+        ("GET", "/helpdesk/my-tickets"), ("POST", "/helpdesk/my-tickets"),
+        ("GET", "/helpdesk/notifications"), ("POST", "/helpdesk/notifications/read-all"),
+        ("GET", "/helpdesk/portal/overview"),
+        ("GET", "/helpdesk/service-catalog"),
+    }
+    if (method, path) in fixed:
+        return True
+    if (method, path) == ("POST", "/helpdesk/notifications/{notification_id}/read"):
+        return True
+    if method == "GET" and path == "/helpdesk/service-catalog/{item_id}":
+        return True
+    if method == "POST" and path == "/helpdesk/service-catalog/{item_id}/submit":
+        return True
+    ticket_id = request.path_params.get("ticket_id")
+    if not ticket_id:
+        return False
+    patterns = {
+        ("GET", f"/helpdesk/my-tickets/{{ticket_id}}"),
+        ("GET", f"/helpdesk/my-tickets/{{ticket_id}}/replies"),
+        ("POST", f"/helpdesk/my-tickets/{{ticket_id}}/replies"),
+        ("POST", f"/helpdesk/my-tickets/{{ticket_id}}/confirm-resolved"),
+        ("POST", f"/helpdesk/my-tickets/{{ticket_id}}/reopen"),
+        ("GET", f"/helpdesk/my-tickets/{{ticket_id}}/resolution"),
+        ("POST", f"/helpdesk/my-tickets/{{ticket_id}}/satisfaction"),
+        ("GET", f"/helpdesk/my-tickets/{{ticket_id}}/attachments"),
+        ("POST", f"/helpdesk/my-tickets/{{ticket_id}}/attachments"),
+        ("GET", f"/helpdesk/my-tickets/{{ticket_id}}/attachments/{{attachment_id}}/download"),
+        ("DELETE", f"/helpdesk/my-tickets/{{ticket_id}}/attachments/{{attachment_id}}"),
+    }
+    if (method, path) in patterns:
+        return True
+    # The shared attachment router has a scope parameter in its template.
+    return (method in {"GET", "POST", "DELETE"}
+        and path in {"/helpdesk/{scope_kind}/{ticket_id}/attachments",
+                     "/helpdesk/{scope_kind}/{ticket_id}/attachments/{attachment_id}/download",
+                     "/helpdesk/{scope_kind}/{ticket_id}/attachments/{attachment_id}"}
+        and request.path_params.get("scope_kind") == "my-tickets")
+
+
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_scheme),
     db: AsyncSession = Depends(get_db)
 ) -> User:
@@ -59,6 +112,8 @@ async def get_current_user(
             detail="User not found or inactive."
         )
 
+    if user.role == UserRole.REQUESTER and not _requester_route_allowed(request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Requester access is limited to the employee portal.")
     return user
 
 

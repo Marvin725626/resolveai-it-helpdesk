@@ -9,6 +9,8 @@ import KnowledgePanel from "./KnowledgePanel";
 import AnalyticsPanel from "./AnalyticsPanel";
 import TeamPage from "./TeamPage";
 import MyRequestsPanel from "./MyRequestsPanel";
+import EmployeePortal from "./EmployeePortal";
+import ServiceCatalogAdmin from "./ServiceCatalogAdmin";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Activity,
@@ -89,8 +91,11 @@ type View =
   | "history"
   | "settings"
   | "team"
-  | "notifications";
+  | "notifications"
+  | "portal"
+  | "catalog-admin";
 const nav = [
+  { id: "portal", label: "服务大厅", icon: Layers },
   { id: "analytics", label: "运营看板", icon: Activity },
   { id: "diagnose", label: "智能诊断", icon: MessageSquare },
   { id: "notifications", label: "个人通知", icon: Bell },
@@ -101,6 +106,7 @@ const nav = [
   { id: "evaluation", label: "离线评估", icon: Activity },
   { id: "settings", label: "运行配置", icon: Cpu },
   { id: "team", label: "团队管理", icon: Users },
+  { id: "catalog-admin", label: "服务目录管理", icon: Layers },
 ] as const;
 const examples = [
   { tag: "VPN / 网络", text: "VPN 连不上，提示认证超时，怎么排查？" },
@@ -141,6 +147,7 @@ function App() {
     full_name: string;
     email: string;
   }>();
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -194,34 +201,70 @@ function App() {
       : response.json();
   }
   async function refresh() {
+    if (currentUser?.role === "REQUESTER") return;
     setOverview(await api<Overview>("/helpdesk/overview"));
   }
   useEffect(() => {
-    if (token) {
-      refresh().catch((e) => setError(e.message));
+    let active = true;
+    setProfileLoaded(false);
+    setCurrentUser(undefined);
+    if (token)
       api<{ role: string; full_name: string; email: string }>("/auth/me")
-        .then(setCurrentUser)
-        .catch(() => setCurrentUser(undefined));
-      const pending = sessionStorage.getItem("resolveai_pending_run");
-      if (pending)
-        api<{ question: string; result: Run }>(`/helpdesk/runs/${pending}`)
-          .then((saved) => {
-            setQuestion(saved.question);
-            setResult(saved.result);
-            setTrace(saved.result.trace || []);
-            if (saved.result.status !== "running")
-              sessionStorage.removeItem("resolveai_pending_run");
-          })
-          .catch(() => sessionStorage.removeItem("resolveai_pending_run"));
-    }
-    return () => abort.current?.abort();
+        .then(async (user) => {
+          if (!active) return;
+          setCurrentUser(user);
+          setProfileLoaded(true);
+          if (user.role === "REQUESTER") {
+            setView("portal");
+            return;
+          }
+          if (
+            !["TENANT_OWNER", "TENANT_ADMIN", "SUPPORT_AGENT"].includes(
+              user.role,
+            )
+          ) {
+            setError("此账号角色暂不支持访问工作台。");
+            return;
+          }
+          setView("diagnose");
+          try {
+            setOverview(await api<Overview>("/helpdesk/overview"));
+          } catch (e) {
+            if (active)
+              setError(e instanceof Error ? e.message : "工作台加载失败");
+          }
+          const pending = sessionStorage.getItem("resolveai_pending_run");
+          if (pending && user.role !== "REQUESTER")
+            api<{ question: string; result: Run }>(`/helpdesk/runs/${pending}`)
+              .then((saved) => {
+                if (!active) return;
+                setQuestion(saved.question);
+                setResult(saved.result);
+                setTrace(saved.result.trace || []);
+                if (saved.result.status !== "running")
+                  sessionStorage.removeItem("resolveai_pending_run");
+              })
+              .catch(() => sessionStorage.removeItem("resolveai_pending_run"));
+        })
+        .catch((e) => {
+          if (active) {
+            setCurrentUser(undefined);
+            setProfileLoaded(true);
+            setError(e instanceof Error ? e.message : "无法读取账号资料");
+          }
+        });
+    else setProfileLoaded(true);
+    return () => {
+      active = false;
+      abort.current?.abort();
+    };
   }, [token]);
 
   useEffect(() => {
     if (
       !token ||
       !currentUser ||
-      !["TENANT_OWNER", "TENANT_ADMIN", "SUPPORT_AGENT"].includes(
+      !["TENANT_OWNER", "TENANT_ADMIN", "SUPPORT_AGENT", "REQUESTER"].includes(
         currentUser.role,
       )
     )
@@ -396,6 +439,16 @@ function App() {
       ? result.answer_sources.includes(e.code)
       : result?.answer?.includes(`[${e.code}]`),
   );
+  const isRequester = currentUser?.role === "REQUESTER";
+  const isSupportRole = [
+    "TENANT_OWNER",
+    "TENANT_ADMIN",
+    "SUPPORT_AGENT",
+  ].includes(currentUser?.role || "");
+  function openMyRequest(id?: string) {
+    setRequestNavigation(id ? { id, key: Date.now() } : undefined);
+    setView("my-tickets");
+  }
 
   if (!token)
     return (
@@ -484,6 +537,25 @@ function App() {
       </main>
     );
 
+  if (!profileLoaded)
+    return (
+      <main className="portal-loading" role="status">
+        正在载入账号资料…
+      </main>
+    );
+  if (!currentUser || (!isRequester && !isSupportRole))
+    return (
+      <main className="portal-loading">
+        <section className="panel">
+          <h1>无法打开工作台</h1>
+          <p>{error || "此账号角色暂不支持访问工作台。"}</p>
+          <button className="primary" onClick={logout}>
+            退出登录
+          </button>
+        </section>
+      </main>
+    );
+
   return (
     <div className="shell">
       <a href="#main" className="skip-link">
@@ -506,12 +578,25 @@ function App() {
         <p className="nav-caption">工作台</p>
         <nav aria-label="工作台导航">
           {nav
+            .filter((item) =>
+              isRequester
+                ? ["portal", "my-tickets", "notifications"].includes(item.id)
+                : item.id !== "portal" || isSupportRole,
+            )
             .filter(
               (item) =>
                 item.id !== "team" ||
-                ["TENANT_OWNER", "TENANT_ADMIN"].includes(
-                  currentUser?.role || "",
-                ),
+                ["TENANT_OWNER", "TENANT_ADMIN"].includes(currentUser.role),
+            )
+            .filter(
+              (item) =>
+                item.id !== "catalog-admin" ||
+                ["TENANT_OWNER", "TENANT_ADMIN"].includes(currentUser.role),
+            )
+            .filter(
+              (item) =>
+                !isRequester ||
+                ["portal", "my-tickets", "notifications"].includes(item.id),
             )
             .map((item) => (
               <button
@@ -534,6 +619,7 @@ function App() {
                   </span>
                 )}
                 {item.id === "tickets" &&
+                  !isRequester &&
                   overview &&
                   overview.open_tickets > 0 && (
                     <span className="nav-count">{overview.open_tickets}</span>
@@ -541,30 +627,48 @@ function App() {
               </button>
             ))}
         </nav>
-        <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <ShieldCheck size={18} />
-            <span>
-              回答附带知识来源
-              <br />
-              高风险操作转人工处理
-            </span>
-          </div>
-          <div className="profile">
-            <span className="avatar">IT</span>
-            <div>
-              <strong>支持工程师</strong>
-              <small>演示账号</small>
-            </div>
-            <button
-              className="icon-button"
-              aria-label="退出登录"
-              onClick={logout}
-            >
-              <LogOut size={17} />
+        {isRequester && (
+          <nav className="requester-logout" aria-label="账号操作">
+            <button className="nav-item" onClick={logout}>
+              <LogOut size={19} />
+              退出登录
             </button>
+          </nav>
+        )}
+        {!isRequester && (
+          <div className="sidebar-bottom">
+            <div className="sidebar-note">
+              <ShieldCheck size={18} />
+              <span>
+                {isRequester ? "查看本人申请与处理进度" : "回答附带知识来源"}
+                <br />
+                {isRequester ? "请勿提交密码或验证码" : "高风险操作转人工处理"}
+              </span>
+            </div>
+            <div className="profile">
+              <span className="avatar">IT</span>
+              <div>
+                <strong>{currentUser.full_name || "工作区成员"}</strong>
+                <small>
+                  {isRequester
+                    ? "员工账号"
+                    : ["TENANT_OWNER", "TENANT_ADMIN"].includes(
+                          currentUser.role,
+                        )
+                      ? "工作区管理员"
+                      : "支持专员"}
+                </small>
+              </div>
+              <button
+                className="icon-button"
+                aria-label="退出登录"
+                onClick={logout}
+              >
+                <LogOut size={17} />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </aside>
       <div className="main-wrap">
         <header className="topbar">
@@ -599,17 +703,21 @@ function App() {
                     ? "从实际运行记录了解支持趋势、证据门控与工单处理情况。"
                     : view === "notifications"
                       ? "查看属于你的工单提醒，及时跟进每一次交接。"
-                      : view === "tickets"
-                        ? "保留完整诊断上下文，让人工支持从正确的位置接手。"
-                        : view === "my-tickets"
-                          ? "查看你提交的 AI 转人工工单，与支持人员公开沟通并确认处理结果。"
-                          : view === "knowledge"
-                            ? "经过入库与检索的 SOP，是回答依据的起点。"
-                            : view === "evaluation"
-                              ? "查看固定开发样本的来源召回、规则决策与检查项。"
-                              : view === "history"
-                                ? "回看每一次诊断的证据、工具结果与运行轨迹。"
-                                : "查看当前模型、检索与数据源的实际配置。"}
+                      : view === "portal"
+                        ? "申请已发布服务，查看本人请求进度。"
+                        : view === "catalog-admin"
+                          ? "维护员工可申请的服务模板和发布状态。"
+                          : view === "tickets"
+                            ? "保留完整诊断上下文，让人工支持从正确的位置接手。"
+                            : view === "my-tickets"
+                              ? "查看你提交的请求，与支持人员公开沟通并确认处理结果。"
+                              : view === "knowledge"
+                                ? "经过入库与检索的 SOP，是回答依据的起点。"
+                                : view === "evaluation"
+                                  ? "查看固定开发样本的来源召回、规则决策与检查项。"
+                                  : view === "history"
+                                    ? "回看每一次诊断的证据、工具结果与运行轨迹。"
+                                    : "查看当前模型、检索与数据源的实际配置。"}
               </p>
             </div>
             <span className="heading-badge">
@@ -622,47 +730,57 @@ function App() {
               {error}
             </div>
           )}
-          <div className="stats-row">
-            <div>
-              <span>
-                <BookOpen size={17} />
-                知识片段
-              </span>
-              <strong>
-                {overview?.chunks ?? "—"}
-                <small>已入库</small>
-              </strong>
+          {!isRequester && (
+            <div className="stats-row">
+              <div>
+                <span>
+                  <BookOpen size={17} />
+                  知识片段
+                </span>
+                <strong>
+                  {overview?.chunks ?? "—"}
+                  <small>已入库</small>
+                </strong>
+              </div>
+              <div>
+                <span>
+                  <Activity size={17} />
+                  诊断运行
+                </span>
+                <strong>
+                  {overview?.runs ?? "—"}
+                  <small>实际记录</small>
+                </strong>
+              </div>
+              <div>
+                <span>
+                  <Ticket size={17} />
+                  待处理工单
+                </span>
+                <strong>
+                  {overview?.open_tickets ?? "—"}
+                  <small>工作区内</small>
+                </strong>
+              </div>
+              <div>
+                <span>
+                  <ShieldCheck size={17} />
+                  工具数据
+                </span>
+                <strong className="stat-text">
+                  模拟环境<small>只读检查</small>
+                </strong>
+              </div>
             </div>
-            <div>
-              <span>
-                <Activity size={17} />
-                诊断运行
-              </span>
-              <strong>
-                {overview?.runs ?? "—"}
-                <small>实际记录</small>
-              </strong>
-            </div>
-            <div>
-              <span>
-                <Ticket size={17} />
-                待处理工单
-              </span>
-              <strong>
-                {overview?.open_tickets ?? "—"}
-                <small>工作区内</small>
-              </strong>
-            </div>
-            <div>
-              <span>
-                <ShieldCheck size={17} />
-                工具数据
-              </span>
-              <strong className="stat-text">
-                模拟环境<small>只读检查</small>
-              </strong>
-            </div>
-          </div>
+          )}
+          {view === "portal" && (
+            <EmployeePortal
+              api={api}
+              onOpenTicket={openMyRequest}
+              onCreated={openMyRequest}
+              showPersonalOverview={isRequester}
+            />
+          )}
           {view === "analytics" && <AnalyticsPanel api={api} />}
           {view === "diagnose" && (
             <div className="diagnose-layout">
@@ -963,10 +1081,14 @@ function App() {
             <NotificationsPanel
               api={api}
               onCount={setUnreadCount}
-              onOpenTicket={(id) => {
-                setTicketNavigation({ id, key: Date.now() });
-                setView("tickets");
-              }}
+              onOpenTicket={(id) =>
+                isRequester
+                  ? openMyRequest(id)
+                  : (() => {
+                      setTicketNavigation({ id, key: Date.now() });
+                      setView("tickets");
+                    })()
+              }
             />
           )}
           {view === "tickets" && (
@@ -1010,6 +1132,11 @@ function App() {
             currentUser &&
             ["TENANT_OWNER", "TENANT_ADMIN"].includes(currentUser.role) && (
               <TeamPage api={api} />
+            )}
+          {view === "catalog-admin" &&
+            currentUser &&
+            ["TENANT_OWNER", "TENANT_ADMIN"].includes(currentUser.role) && (
+              <ServiceCatalogAdmin api={api} />
             )}
           {view === "settings" && <ReadinessPanel api={api} />}
           {view === "settings" && (

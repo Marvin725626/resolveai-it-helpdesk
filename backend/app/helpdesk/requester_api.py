@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.sanitizer import sanitize_text_input
+from app.helpdesk.catalog_snapshot import service_snapshot
 from app.helpdesk.models import HelpdeskRun, HelpdeskTicketEvent, HelpdeskTicketReply, ManualTicketSubmission
 from app.helpdesk.ticket_ops import atomic_change, check_revision, find_ticket, notify_event, record_event, utc
 from app.helpdesk.ticket_source import ticket_source_expression
@@ -183,6 +184,9 @@ async def my_ticket_detail(ticket_id: UUID, user=Depends(get_current_user), db=D
     ticket_view = public_ticket(ticket, await assignee_name(db, ticket), labels[source_code], source_code)
     if submission:
         ticket_view["request"] = {"description": submission.payload["description"], "category": submission.payload["category"]}
+        snapshot = service_snapshot(submission.payload)
+        if snapshot:
+            ticket_view["request"]["service"] = snapshot
     return {"ticket": ticket_view,
         "timeline": [{"type": row.event_type, "created_at": iso_time(row.created_at),
             "status": row.payload.get("to") if row.event_type == "status_changed" else None,

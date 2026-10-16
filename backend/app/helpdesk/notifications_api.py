@@ -9,12 +9,14 @@ from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.helpdesk.api import operator, utc_time
 from app.helpdesk.models import HelpdeskNotification
+from app.models.user import UserRole
 
 router = APIRouter(prefix="/helpdesk/notifications", tags=["Notifications"])
 
 
 def scope(user):
-    operator(user)
+    if user.role != UserRole.REQUESTER:
+        operator(user)
     return (HelpdeskNotification.tenant_id == user.tenant_id, HelpdeskNotification.user_id == user.id)
 
 

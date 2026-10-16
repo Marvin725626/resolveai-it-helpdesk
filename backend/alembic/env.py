@@ -37,6 +37,7 @@ import app.models.ticket  # noqa
 import app.models.analytics  # noqa
 import app.models.audit_log  # noqa
 import app.helpdesk.models  # noqa
+import app.helpdesk.catalog_models  # noqa
 import app.helpdesk.resolution_models  # noqa
 import app.helpdesk.knowledge_draft_models  # noqa
 import app.helpdesk.view_models  # noqa
