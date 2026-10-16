@@ -122,6 +122,25 @@ async def business(url, attachment_root, live=False):
             else:
                 run = await api("POST", "/helpdesk/runs", token, json=run_body)
             ticket_id = run["ticket_id"]
+            # SQL source filters must behave identically on PostgreSQL and SQLite.
+            manual_page = await api("GET","/helpdesk/ticket-queue?source=manual",token)
+            require(manual_page["total"]==1 and manual_page["items"][0]["id"]==manual_id and manual_page["items"][0]["source"]=="manual","queue manual provenance")
+            ai_page = await api("GET","/helpdesk/ticket-queue?source=ai",token)
+            require(ai_page["total"]==1 and ai_page["items"][0]["id"]==ticket_id,"queue AI provenance")
+            require((await api("GET","/helpdesk/ticket-queue?source=legacy",token))["total"]==0,"legacy is not guessed from title")
+            exported = await api("GET","/helpdesk/ticket-queue/export?source=manual",token)
+            require(exported["total"]==manual_page["total"] and [r["id"] for r in exported["items"]]==[manual_id],"export uses same source predicate")
+            private_marker = "internal-diagnostic-"+suffix
+            async with engine.begin() as connection:
+                context_json = json.loads(await connection.scalar(text("SELECT description FROM tickets WHERE tenant_id=:tenant AND id=:id"),{"tenant":owner["user"]["tenant_id"],"id":ticket_id}))
+                context_json["internal_search_marker"] = private_marker
+                await connection.execute(text("UPDATE tickets SET description=:description WHERE tenant_id=:tenant AND id=:id"),{"description":json.dumps(context_json,ensure_ascii=False),"tenant":owner["user"]["tenant_id"],"id":ticket_id})
+            require((await api("GET","/helpdesk/my-tickets",token,params={"q":private_marker}))["total"]==0,"personal search must not match internal context")
+            personal = await api("GET","/helpdesk/my-tickets",token,params={"q":"合成验收的办公网络","source":"manual"})
+            require(personal["total"]==1 and personal["items"][0]["id"]==manual_id,"personal search matches own submitted description")
+            require((await api("GET","/helpdesk/my-tickets",wrong,params={"q":"合成验收的办公网络"}))["total"]==0,"personal search tenant isolation")
+            require((await api("GET","/helpdesk/my-tickets",token,params={"q":"%_"}))["total"]==0,"wildcards are literal")
+            require((await api("GET","/helpdesk/my-tickets?source=manual&status=ESCALATED",token))["total"]==0,"source and status compose")
             path = "/helpdesk/tickets/" + ticket_id
             mine = "/helpdesk/my-tickets/" + ticket_id
             async def ticket(): return (await api("GET", path, token))["ticket"]
@@ -154,7 +173,8 @@ async def business(url, attachment_root, live=False):
 
             # CAS case 2: personal views are separately scoped and versioned.
             filters={"q":"VPN","status":None,"priority":None,"assignment":"mine","sla":None,"page_size":20}
-            created=await api("POST","/helpdesk/queue-views",token,status=201,json={"request_id":str(uuid4()),"name":"PG view","filters":filters})
+            view_request={"request_id":str(uuid4()),"name":"PG view","filters":filters}
+            created=await api("POST","/helpdesk/queue-views",token,status=201,json=view_request)
             view=created["view"]; view_path="/helpdesk/queue-views/"+view["id"]
             view_responses=await asyncio.gather(*(client.put("/api/v1"+view_path,headers={"Authorization":"Bearer "+token},
                 json={"expected_version":view["version"],"name":name,"filters":filters}) for name in ("PG winner A","PG winner B")))
@@ -164,6 +184,12 @@ async def business(url, attachment_root, live=False):
             await api("PUT",view_path,wrong,status=404,json={"expected_version":2,"name":"bad","filters":filters})
             require((await api("GET","/helpdesk/queue-views",support_token))["items"]==[],"views are personal")
 
+            compatible = await api("POST","/helpdesk/queue-views",token,status=201,json={**view_request,"filters":{**filters,"source":None}})
+            require(compatible["cached"] and compatible["view"]["id"]==view["id"],"omitted and null source preserve old creation replay")
+            source_view = await api("POST","/helpdesk/queue-views",token,status=201,json={"request_id":str(uuid4()),"name":"PG manual source","filters":{**filters,"source":"manual"}})
+            require(source_view["view"]["filters"]["source"]=="manual","source view persists")
+            changed_source = await api("PUT","/helpdesk/queue-views/"+source_view["view"]["id"],token,json={"expected_version":1,"name":"PG AI source","filters":{**filters,"source":"ai"}})
+            require(changed_source["view"]["filters"]["source"]=="ai","source view update persists")
             preserved = None
             if live:
                 preserved = await api("POST",path+"/attachments",support_token,status=201,
@@ -246,7 +272,7 @@ async def main():
             await business(fresh_url,Path(storage))
         print(json.dumps({"passed":True,"database":"PostgreSQL","migrations":["fresh","repeat","upgrade-preserves-data"],
             "pgvector_hybrid_search":True,"resolution_rating_draft_publish":True,"attachment_bytes_delete":True,
-            "scoped_concurrent_CAS_cases":2,"manual_submission_race_and_isolation":True,"source_database_untouched":True}))
+            "scoped_concurrent_CAS_cases":2,"manual_submission_race_and_isolation":True,"source_filters_and_private_search":True,"source_database_untouched":True}))
     finally:
         for name in databases:
             # Names are generated UUIDs, never caller-controlled. Drop only our new DBs.

@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.sanitizer import sanitize_text_input
 from app.helpdesk.models import HelpdeskRun, HelpdeskTicketEvent, HelpdeskTicketReply, ManualTicketSubmission
 from app.helpdesk.ticket_ops import atomic_change, check_revision, find_ticket, notify_event, record_event, utc
+from app.helpdesk.ticket_source import ticket_source_expression
 from app.helpdesk.workflow import redact
 from app.models.ticket import Ticket, TicketStatus, TicketCategory, TicketPriority
 from app.models.customer import Customer
@@ -60,11 +61,11 @@ async def requester_ticket(db, user, ticket_id):
     return ticket
 
 
-def public_ticket(ticket, assignee=None, source="AI 转人工"):
+def public_ticket(ticket, assignee=None, source="AI 转人工", source_code="ai"):
     return {"id": ticket.id, "subject": ticket.subject, "status": ticket.status.value,
         "priority": ticket.priority.value, "assignee": assignee,
         "created_at": iso_time(ticket.created_at), "updated_at": iso_time(ticket.updated_at),
-        "resolved_at": iso_time(ticket.resolved_at), "source": source}
+        "resolved_at": iso_time(ticket.resolved_at), "source": source, "source_code": source_code}
 
 
 @router.post("/my-tickets", status_code=201)
@@ -132,16 +133,39 @@ async def assignee_name(db, ticket):
 
 @router.get("/my-tickets")
 async def my_tickets(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=50),
-        status: TicketStatus | None = None, user=Depends(get_current_user), db=Depends(get_db)):
+        status: TicketStatus | None = None, q: str = Query("", max_length=200),
+        source: str | None = Query(None, pattern=r"^(manual|ai)$"),
+        user=Depends(get_current_user), db=Depends(get_db)):
+    source_expr = ticket_source_expression()
     manual_exists = exists(select(ManualTicketSubmission.request_id).where(
         ManualTicketSubmission.tenant_id == Ticket.tenant_id, ManualTicketSubmission.ticket_id == Ticket.id))
-    query = select(Ticket, manual_exists.label("is_manual")).where(Ticket.tenant_id == user.tenant_id, requester_ownership(user))
+    query = select(Ticket, source_expr.label("source_code")).where(
+        Ticket.tenant_id == user.tenant_id, requester_ownership(user))
     if status:
         query = query.where(Ticket.status == status)
-    total = await db.scalar(select(func.count()).select_from(query.subquery()))
-    rows = list((await db.execute(query.order_by(Ticket.created_at.desc(), Ticket.id).offset((page-1)*page_size).limit(page_size))).all())
-    return {"items": [{**public_ticket(ticket, await assignee_name(db, ticket), "手动报障" if is_manual else "AI 转人工")} for ticket, is_manual in rows],
-        "page": page, "page_size": page_size, "total": total}
+    if source:
+        query = query.where(source_expr == source)
+    text = q.strip()
+    if text:
+        own_manual_description = exists(select(ManualTicketSubmission.request_id).where(
+            ManualTicketSubmission.tenant_id == Ticket.tenant_id,
+            ManualTicketSubmission.ticket_id == Ticket.id,
+            ManualTicketSubmission.user_id == user.id,
+            ManualTicketSubmission.payload["description"].as_string().icontains(text, autoescape=True)))
+        own_run_question = exists(select(HelpdeskRun.id).where(
+            HelpdeskRun.tenant_id == Ticket.tenant_id, HelpdeskRun.user_id == user.id,
+            HelpdeskRun.result["ticket_id"].as_string() == Ticket.id,
+            HelpdeskRun.question.icontains(text, autoescape=True)))
+        query = query.where(or_(Ticket.subject.icontains(text, autoescape=True),
+            Ticket.id.icontains(text, autoescape=True), own_manual_description, own_run_question))
+    total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
+    last_page = max(1, (total + page_size - 1) // page_size)
+    effective_page = min(page, last_page)
+    rows = list((await db.execute(query.order_by(Ticket.created_at.desc(), Ticket.id.desc())
+        .offset((effective_page - 1) * page_size).limit(page_size))).all())
+    labels = {"manual": "手动报障", "ai": "AI 转人工", "legacy": "历史工单"}
+    return {"items": [{**public_ticket(ticket, await assignee_name(db, ticket), labels[source_code], source_code)}
+        for ticket, source_code in rows], "page": effective_page, "page_size": page_size, "total": total}
 
 
 @router.get("/my-tickets/{ticket_id}")
@@ -154,7 +178,9 @@ async def my_ticket_detail(ticket_id: UUID, user=Depends(get_current_user), db=D
         HelpdeskTicketEvent.tenant_id == user.tenant_id, HelpdeskTicketEvent.ticket_id == ticket.id,
         HelpdeskTicketEvent.event_type.in_(("created", "status_changed", "assigned", "assignment_changed")))
         .order_by(HelpdeskTicketEvent.sequence.asc()).limit(100))).all())
-    ticket_view = public_ticket(ticket, await assignee_name(db, ticket), "手动报障" if submission else "AI 转人工")
+    source_code = "manual" if submission else await db.scalar(select(ticket_source_expression()).where(Ticket.id == ticket.id, Ticket.tenant_id == user.tenant_id))
+    labels = {"manual": "手动报障", "ai": "AI 转人工", "legacy": "历史工单"}
+    ticket_view = public_ticket(ticket, await assignee_name(db, ticket), labels[source_code], source_code)
     if submission:
         ticket_view["request"] = {"description": submission.payload["description"], "category": submission.payload["category"]}
     return {"ticket": ticket_view,

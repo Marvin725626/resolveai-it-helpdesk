@@ -6,7 +6,7 @@
 
 **FastAPI · LangGraph · React · 混合 RAG · IT HelpDesk**
 
-[v1.9 主动报障](docs/MANUAL_REQUESTS.md) · [v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
+[v1.10 工单查找](docs/FINDING_TICKETS.md) · [v1.9 主动报障](docs/MANUAL_REQUESTS.md) · [v1.8 部署与恢复](docs/DEPLOYMENT.md) · [v1.7 功能说明](docs/TRIAGE_AND_TEAM_METRICS.md) · [工单处理流程](docs/TICKET_WORKFLOW.md) · [三分钟演示](docs/DEMO.md) · [截图与功能说明](docs/SHOWCASE.md) · [架构](docs/ARCHITECTURE.resolveai.md) · [验证记录](docs/VALIDATION.md) · [更新记录](CHANGELOG.md)
 
 ### 运营看板实机截图
 
@@ -29,7 +29,13 @@ flowchart LR
     D --> M[运营看板与导出]
 ```
 
-## 本批完善：主动报障
+## 本批完善：工单查找与来源分流
+
+- 我的报障支持关键词、状态、来源组合筛选，按匹配结果分页。
+- 支持队列区分主动报障、AI 转人工与历史工单，CSV 和保存视图使用相同来源条件。
+- 个人搜索限定本人提交内容，保留旧保存视图和请求重试兼容。
+
+## 主动报障
 
 - 在“我的报障”直接提交问题，展示实际来源、问题分类和提交内容。
 - 与既有工程师接手、公开回复、私有附件、确认解决及评分流程衔接。

@@ -147,3 +147,14 @@ PostgreSQL 恢复演练短暂停止该独立部署应用，生成 custom-format 
 
 - 新版同源 `live-check`、三容器 `recreate-check` 与 PostgreSQL dump/restore 演练通过，新的验证清单包含手动提交的 request/user/ticket 关联与处理中状态。恢复后 `manual_request_ownership=true`；5个合成活跃附件全部校验匹配，临时恢复库已删除，原数据库与附件卷未覆盖。
 - 本机 SQLite 8104 与 Docker 8114 的 OpenAPI 均为1.9.0，均包含主动建单端点；5174与5184均返回HTTP 200。配置、合成账号及备份继续仅保存在本地忽略路径，未新增公开截图。
+
+
+## v1.10.0 · 2026-10-16 · 工单检索与来源分流
+
+- 本批相关隔离后端回归43项通过：核心39、原报障跟进1、主动报障1、分诊与保存视图1、新来源筛选1。各模块使用独立进程及临时数据库。
+- 新测试覆盖主动/AI/历史三类来源、同一工单多条 Run 不重复、筛选总数与跨页 ID、导出同口径、非法来源、来源+状态组合、本人描述与 AI question、内部诊断专有词不命中、字面 `%/_`、同租户同事与跨租户隔离，以及旧视图缺省/None 创建重放和新来源视图更新。
+- 前端 authored formatting、TypeScript 与生产构建通过；最终 Docker 前端构建通过（1920 modules）。既有私有配置、数据库和附件卷保留，本批没有新增数据库迁移。
+- 真实 PostgreSQL `postgres-check` 通过：来源 SQL、本人描述搜索与内部上下文排除、导出条件一致、旧视图省略/None 来源重试、新视图来源保存更新；既有迁移、向量检索、完整业务链、同请求并发建单及两类 CAS 检查继续通过。仅清理自建测试数据库。
+- 无截图浏览器脚本 `scripts/smoke-ticket-filters.cjs` 通过：21条合成主动报障与1条 AI 工单用于分页/组合筛选；延迟旧响应后新搜索结果保持，末尾空格与快速改回原查询不卡空，未提交报障草稿保留，新建成功清筛选并打开工单，来源视图刷新后可应用，实际 CSV 跨页导出22条匹配主动报障。队列及个人报障390px无横向页面溢出，0个 pageerror。
+
+浏览器脚本仅允许显式设置 `RESOLVEAI_ALLOW_SYNTHETIC_WRITES=1` 且目标为 localhost/127.0.0.1，默认5184。可通过 `PLAYWRIGHT_MODULE` / `CHROMIUM_PATH` 复用本机依赖；执行 `node scripts/smoke-ticket-filters.cjs` 会创建随机合成工作区，不复用旧账号、不生成公开截图。工单查找不代表生产搜索容量或企业系统集成验收。

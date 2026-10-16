@@ -7,6 +7,7 @@ export type QueueFilters = {
   priority: string | null;
   assignment: "all" | "mine" | "unassigned";
   sla: "on_track" | "due_soon" | "overdue" | null;
+  source?: "manual" | "ai" | "legacy" | null;
   page_size: number;
 };
 type View = {

@@ -14,6 +14,7 @@ type Item = {
   updated_at: string;
   resolved_at: string | null;
   source: string;
+  source_code?: "manual" | "ai" | "legacy";
 };
 type Detail = {
   ticket: Item & { request?: { description: string; category: string } };
@@ -58,6 +59,13 @@ export default function MyRequestsPanel({
   const [items, setItems] = useState<Item[]>([]);
   const [listPage, setListPage] = useState(1);
   const [listTotal, setListTotal] = useState(0);
+  const [listRevision, setListRevision] = useState(0);
+  const [listLoading, setListLoading] = useState(false);
+  const [listError, setListError] = useState("");
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [sourceFilter, setSourceFilter] = useState("ALL");
   const [selected, setSelected] = useState("");
   const [detail, setDetail] = useState<Detail>();
   const [replies, setReplies] = useState<Reply[]>([]);
@@ -76,6 +84,8 @@ export default function MyRequestsPanel({
   const [showCreate, setShowCreate] = useState(false);
   const [retryCreate, setRetryCreate] = useState(false);
   const generation = useRef(0);
+  const listGeneration = useRef(0);
+  const pinnedTicket = useRef("");
   const lastNavigationKey = useRef<number | undefined>(undefined);
   const pending = useRef<
     { key: string; body: string; path: string } | undefined
@@ -115,18 +125,16 @@ export default function MyRequestsPanel({
       setRetryCreate(false);
       setNewSubject("");
       setNewDescription("");
+      listGeneration.current++;
+      pinnedTicket.current = result.ticket_id;
+      setSearchDraft("");
+      setSearch("");
+      setStatusFilter("ALL");
+      setSourceFilter("ALL");
       setSelected(result.ticket_id);
+      setListRevision((value) => value + 1);
       setListPage(1);
       setNotice("报障已提交，已打开新工单。");
-      try {
-        const page = await api<{ items: Item[]; total: number }>(
-          "/helpdesk/my-tickets?page=1&page_size=20",
-        );
-        setItems(page.items);
-        setListTotal(page.total);
-      } catch {
-        setNotice("报障已提交；工单列表刷新失败，请稍后刷新列表。");
-      }
     } catch (e) {
       setRetryCreate(true);
       setError(
@@ -137,6 +145,15 @@ export default function MyRequestsPanel({
     }
   }
   useEffect(() => {
+    const next = searchDraft.trim();
+    if (next === search) return;
+    const timer = setTimeout(() => {
+      clearSelectionForFilter();
+      setSearch(next);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchDraft, search]);
+  useEffect(() => {
     let active = true;
     if (
       initialTicketId &&
@@ -144,27 +161,88 @@ export default function MyRequestsPanel({
       lastNavigationKey.current !== navigationKey
     ) {
       lastNavigationKey.current = navigationKey;
+      listGeneration.current++;
+      generation.current++;
+      setSearchDraft("");
+      setSearch("");
+      setStatusFilter("ALL");
+      setSourceFilter("ALL");
+      setListPage(1);
+      setItems([]);
+      setListTotal(0);
+      setDetail(undefined);
+      setReplies([]);
+      pinnedTicket.current = initialTicketId;
       setSelected(initialTicketId);
+      setListRevision((value) => value + 1);
+      return;
     }
-    api<{ items: Item[]; total: number }>(
-      `/helpdesk/my-tickets?page=${listPage}&page_size=20`,
+    const params = new URLSearchParams({
+      page: String(listPage),
+      page_size: "20",
+    });
+    if (search) params.set("q", search);
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
+    if (sourceFilter !== "ALL") params.set("source", sourceFilter);
+    const current = ++listGeneration.current;
+    setListLoading(true);
+    setListError("");
+    api<{ items: Item[]; total: number; page?: number }>(
+      `/helpdesk/my-tickets?${params}`,
     )
       .then((page) => {
-        if (!active) return;
+        if (!active || current !== listGeneration.current) return;
         setItems(page.items);
         setListTotal(page.total);
-        setSelected((current) => current || page.items[0]?.id || "");
+        if (page.page && page.page !== listPage) setListPage(page.page);
+        setSelected((selectedId) => {
+          if (pinnedTicket.current) return pinnedTicket.current;
+          if (selectedId && page.items.some((item) => item.id === selectedId))
+            return selectedId;
+          return page.items[0]?.id || "";
+        });
       })
-      .catch((e) => active && setError(e.message));
+      .catch((e) => {
+        if (active && current === listGeneration.current)
+          setListError(e.message);
+      })
+      .finally(() => {
+        if (active && current === listGeneration.current) setListLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [navigationKey, listPage]);
+  }, [
+    navigationKey,
+    listPage,
+    search,
+    statusFilter,
+    sourceFilter,
+    listRevision,
+  ]);
+  function clearSelectionForFilter() {
+    listGeneration.current++;
+    generation.current++;
+    pinnedTicket.current = "";
+    setItems([]);
+    setSelected("");
+    setDetail(undefined);
+    setReplies([]);
+    setListPage(1);
+  }
+  function clearFilters() {
+    clearSelectionForFilter();
+    setSearchDraft("");
+    setSearch("");
+    setStatusFilter("ALL");
+    setSourceFilter("ALL");
+  }
   useEffect(() => {
     setDraft("");
     setExplanation("");
     pending.current = undefined;
     if (!selected) {
+      setLoading(false);
       setDetail(undefined);
       setReplies([]);
       return;
@@ -205,8 +283,8 @@ export default function MyRequestsPanel({
       api<{ items: Reply[]; has_more: boolean; next_before: number | null }>(
         `/helpdesk/my-tickets/${selected}/replies?page_size=20`,
       ),
-      api<{ items: Item[]; total: number }>(
-        `/helpdesk/my-tickets?page=${listPage}&page_size=20`,
+      api<{ items: Item[]; total: number; page?: number }>(
+        `/helpdesk/my-tickets?${new URLSearchParams({ page: String(listPage), page_size: "20", ...(search ? { q: search } : {}), ...(statusFilter !== "ALL" ? { status: statusFilter } : {}), ...(sourceFilter !== "ALL" ? { source: sourceFilter } : {}) })}`,
       ),
     ]);
     if (generation.current !== current) return;
@@ -216,6 +294,7 @@ export default function MyRequestsPanel({
     setReplyHasMore(thread.has_more);
     setItems(list.items);
     setListTotal(list.total);
+    if (list.page && list.page !== listPage) setListPage(list.page);
   }
   async function loadOlderReplies() {
     if (!selected || replyBefore === null || busy) return;
@@ -340,7 +419,71 @@ export default function MyRequestsPanel({
   return (
     <section className="panel my-requests">
       <div className="my-requests-list">
-        <h2>我的报障</h2>
+        <h2>我的报障{listTotal > 0 ? ` · ${listTotal} 条` : ""}</h2>
+        <div className="my-request-filters">
+          <label htmlFor="my-request-search">搜索我的报障</label>
+          <input
+            id="my-request-search"
+            type="search"
+            value={searchDraft}
+            maxLength={200}
+            onChange={(event) => setSearchDraft(event.target.value)}
+            placeholder="标题、工单编号或报障内容"
+          />
+          <label htmlFor="my-request-status">报障状态筛选</label>
+          <select
+            id="my-request-status"
+            aria-label="报障状态筛选"
+            value={statusFilter}
+            onChange={(event) => {
+              clearSelectionForFilter();
+              setStatusFilter(event.target.value);
+            }}
+          >
+            <option value="ALL">全部状态</option>
+            {Object.entries(labels)
+              .filter(([key]) =>
+                [
+                  "OPEN",
+                  "ESCALATED",
+                  "IN_PROGRESS",
+                  "WAITING_FOR_CUSTOMER",
+                  "RESOLVED",
+                  "CLOSED",
+                ].includes(key),
+              )
+              .map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+          </select>
+          <label htmlFor="my-request-source">报障来源筛选</label>
+          <select
+            id="my-request-source"
+            aria-label="报障来源筛选"
+            value={sourceFilter}
+            onChange={(event) => {
+              clearSelectionForFilter();
+              setSourceFilter(event.target.value);
+            }}
+          >
+            <option value="ALL">全部来源</option>
+            <option value="manual">主动报障</option>
+            <option value="ai">AI转人工</option>
+          </select>
+          <button
+            type="button"
+            className="secondary"
+            onClick={clearFilters}
+            disabled={
+              !searchDraft && statusFilter === "ALL" && sourceFilter === "ALL"
+            }
+          >
+            清除报障筛选
+          </button>
+          <small>匹配 {listTotal} 条</small>
+        </div>
         <button
           className="primary manual-request-toggle"
           type="button"
@@ -408,8 +551,30 @@ export default function MyRequestsPanel({
             </button>
           </form>
         )}
-        {items.length === 0 ? (
-          <p className="muted">你还没有报障工单。</p>
+        {listLoading && items.length === 0 ? (
+          <p className="muted" role="status">
+            正在搜索报障…
+          </p>
+        ) : listError ? (
+          <div className="error" role="alert">
+            <p>报障列表加载失败：{listError}</p>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setListRevision((value) => value + 1)}
+            >
+              重试报障列表
+            </button>
+          </div>
+        ) : items.length === 0 ? (
+          <p className="muted">
+            {listTotal === 0 &&
+            !search &&
+            statusFilter === "ALL" &&
+            sourceFilter === "ALL"
+              ? "你还没有报障工单。"
+              : "没有匹配的报障工单，请调整筛选条件。"}
+          </p>
         ) : (
           items.map((item) => (
             <button
@@ -419,7 +584,10 @@ export default function MyRequestsPanel({
               className={
                 selected === item.id ? "request-item active" : "request-item"
               }
-              onClick={() => setSelected(item.id)}
+              onClick={() => {
+                pinnedTicket.current = "";
+                setSelected(item.id);
+              }}
             >
               <strong>{item.subject}</strong>
               <span>
@@ -436,7 +604,11 @@ export default function MyRequestsPanel({
             <button
               className="secondary"
               disabled={busy || listPage <= 1}
-              onClick={() => setListPage((value) => value - 1)}
+              onClick={() => {
+                pinnedTicket.current = "";
+                setSelected("");
+                setListPage((value) => value - 1);
+              }}
             >
               上一页
             </button>
@@ -446,7 +618,11 @@ export default function MyRequestsPanel({
             <button
               className="secondary"
               disabled={busy || listPage >= Math.ceil(listTotal / 20)}
-              onClick={() => setListPage((value) => value + 1)}
+              onClick={() => {
+                pinnedTicket.current = "";
+                setSelected("");
+                setListPage((value) => value + 1);
+              }}
             >
               下一页
             </button>

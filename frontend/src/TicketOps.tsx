@@ -11,7 +11,7 @@ export type TicketSummary = {
   status: string;
   priority: string;
   description?: string;
-  source?: "manual" | "ai";
+  source?: "manual" | "ai" | "legacy";
   request?: { description: string; category: string };
   reason: string;
   created_at: string;
@@ -922,7 +922,11 @@ export default function TicketOps({
                 </section>
               ) : (
                 <details className="diagnostic-payload">
-                  <summary>查看原始诊断上下文</summary>
+                  <summary>
+                    {ticket.source === "legacy"
+                      ? "查看工单内容"
+                      : "查看原始诊断上下文"}
+                  </summary>
                   <pre>{detail.ticket.description}</pre>
                 </details>
               )}

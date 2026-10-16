@@ -115,6 +115,7 @@ class QueueFilters(BaseModel):
     priority: TicketPriority | None = None
     assignment: Literal["all", "mine", "unassigned"] = "all"
     sla: SlaFilter | None = None
+    source: Literal["manual", "ai", "legacy"] | None = None
     page_size: int = Field(default=20, ge=1, le=100, strict=True)
 
     @field_validator("q")
@@ -159,7 +160,15 @@ def view_dto(row):
         "created_at": iso_time(row.created_at), "updated_at": iso_time(row.updated_at)}
 
 
+def normalized_filters(filters):
+    result = dict(filters)
+    if result.get("source") is None:
+        result.pop("source", None)
+    return result
+
+
 def fingerprint(name, filters):
+    filters = normalized_filters(filters)
     body = json.dumps({"name": name, "filters": filters}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(body.encode()).hexdigest()
 
@@ -195,7 +204,7 @@ async def queue_views(user=Depends(get_current_user), db=Depends(get_db)):
 @router.post("/queue-views", status_code=201)
 async def create_view(data: ViewCreate, user=Depends(get_current_user), db=Depends(get_db)):
     operator(user); user = identity(user)
-    filters = data.filters.model_dump(mode="json"); digest = fingerprint(data.name, filters)
+    filters = normalized_filters(data.filters.model_dump(mode="json")); digest = fingerprint(data.name, filters)
     row = await replay_view(db, user, str(data.request_id), digest)
     if row:
         return {"view": view_dto(row), "cached": True}
@@ -236,7 +245,7 @@ async def update_view(view_id: UUID, data: ViewUpdate, user=Depends(get_current_
     try:
         changed = await db.execute(update(SavedQueueView).where(*view_scope(user), SavedQueueView.id == str(view_id),
             SavedQueueView.deleted_at.is_(None), SavedQueueView.version == data.expected_version).values(
-            name=data.name, name_key=data.name.casefold(), filters=data.filters.model_dump(mode="json"),
+            name=data.name, name_key=data.name.casefold(), filters=normalized_filters(data.filters.model_dump(mode="json")),
             version=SavedQueueView.version + 1, updated_at=datetime.now(timezone.utc)))
         if changed.rowcount != 1:
             raise HTTPException(409, "筛选视图已更新，请刷新后重试")

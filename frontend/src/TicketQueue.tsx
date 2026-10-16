@@ -41,6 +41,7 @@ export default function TicketQueue({
   const [ticketStatus, setTicketStatus] = useState("ALL");
   const [ticketPriority, setTicketPriority] = useState("ALL");
   const [assignment, setAssignment] = useState("all");
+  const [ticketSource, setTicketSource] = useState("ALL");
   const [ticketSearch, setTicketSearch] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -62,6 +63,7 @@ export default function TicketQueue({
     setTicketPriority(filters.priority || "ALL");
     setTicketSla(filters.sla || "ALL");
     setAssignment(filters.assignment);
+    setTicketSource(filters.source || "ALL");
     setSize(filters.page_size);
     setPage(1);
     setFocusedTicket(undefined);
@@ -74,6 +76,7 @@ export default function TicketQueue({
     let active = true;
     const current = ++focusGeneration.current;
     setTicketSla("ALL");
+    setTicketSource("ALL");
     setTicketStatus("ALL");
     setTicketPriority("ALL");
     setAssignment("all");
@@ -107,6 +110,7 @@ export default function TicketQueue({
   if (ticketStatus !== "ALL") params.set("status", ticketStatus);
   if (ticketPriority !== "ALL") params.set("priority", ticketPriority);
   if (ticketSla !== "ALL") params.set("sla", ticketSla);
+  if (ticketSource !== "ALL") params.set("source", ticketSource);
   const filters = params.toString();
   params.set("page", String(page));
   params.set("page_size", String(size));
@@ -190,6 +194,7 @@ export default function TicketQueue({
           "问题",
           "状态",
           "优先级",
+          "来源",
           "升级原因",
           "创建时间 UTC",
           "接手人",
@@ -201,6 +206,11 @@ export default function TicketQueue({
           ticket.subject,
           statusLabel[ticket.status] || ticket.status,
           ticket.priority,
+          ticket.source === "manual"
+            ? "主动报障"
+            : ticket.source === "ai"
+              ? "AI转人工"
+              : "历史工单",
           ticket.reason || "",
           ticket.created_at,
           ticket.assigned_agent_name || "尚未接手",
@@ -232,7 +242,12 @@ export default function TicketQueue({
       >
         <div>
           <span className="source-code">
-            {focused ? "通知关联工单 · " : ""}#{t.id.slice(0, 8)}
+            {focused ? "通知关联工单 · " : ""}#{t.id.slice(0, 8)} ·{" "}
+            {t.source === "manual"
+              ? "主动报障"
+              : t.source === "ai"
+                ? "AI转人工"
+                : "历史工单"}
           </span>
           <h3>{t.subject}</h3>
           <p>{t.reason}</p>
@@ -351,6 +366,10 @@ export default function TicketQueue({
           assignment: assignment as QueueFilters["assignment"],
           sla: ticketSla === "ALL" ? null : (ticketSla as QueueFilters["sla"]),
           page_size: size,
+          source:
+            ticketSource === "ALL"
+              ? null
+              : (ticketSource as QueueFilters["source"]),
         }}
         onApply={applyView}
       />
@@ -397,6 +416,7 @@ export default function TicketQueue({
             onChange={(e) => {
               setTicketSearch(e.target.value);
               setPage(1);
+              setFocusedTicket(undefined);
             }}
             placeholder="例如 VPN 或权限"
           />
@@ -409,6 +429,7 @@ export default function TicketQueue({
             onChange={(e) => {
               setTicketStatus(e.target.value);
               setPage(1);
+              setFocusedTicket(undefined);
             }}
           >
             <option value="ALL">全部状态</option>
@@ -420,6 +441,23 @@ export default function TicketQueue({
           </select>
         </label>
         <label>
+          工单来源
+          <select
+            aria-label="工单来源筛选"
+            value={ticketSource}
+            onChange={(event) => {
+              setTicketSource(event.target.value);
+              setPage(1);
+              setFocusedTicket(undefined);
+            }}
+          >
+            <option value="ALL">全部来源</option>
+            <option value="manual">主动报障</option>
+            <option value="ai">AI转人工</option>
+            <option value="legacy">历史工单</option>
+          </select>
+        </label>
+        <label>
           优先级
           <select
             aria-label="优先级"
@@ -427,6 +465,7 @@ export default function TicketQueue({
             onChange={(e) => {
               setTicketPriority(e.target.value);
               setPage(1);
+              setFocusedTicket(undefined);
             }}
           >
             <option value="ALL">全部优先级</option>
@@ -444,6 +483,7 @@ export default function TicketQueue({
             onChange={(event) => {
               setTicketSla(event.target.value);
               setPage(1);
+              setFocusedTicket(undefined);
             }}
           >
             <option value="ALL">全部时限</option>
@@ -466,6 +506,7 @@ export default function TicketQueue({
             onChange={(event) => {
               setAssignment(event.target.value);
               setPage(1);
+              setFocusedTicket(undefined);
             }}
           >
             <option value="all">全部工单</option>

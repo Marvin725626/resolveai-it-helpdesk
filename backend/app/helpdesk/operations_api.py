@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.helpdesk.api import operator, ticket_dict, utc_time
 from app.helpdesk.models import HelpdeskRun, RunbookChunk
+from app.helpdesk.ticket_source import ticket_source_expression
 from app.helpdesk.retrieval import embedding_identity
 from app.helpdesk.ticket_ops import FINISHED, SLA_HOURS
 from app.models.ticket import Ticket, TicketPriority, TicketStatus
@@ -20,12 +21,13 @@ SlaFilter=Literal["on_track","due_soon","overdue"]
 RunStatus=Literal["running","completed","failed","cancelled","interrupted"]
 Category=Literal["vpn","account","software","service","email","unknown"]
 
-def ticket_conditions(user,q,status,priority,assignment,sla,now):
+def ticket_conditions(user,q,status,priority,assignment,sla,now,source=None):
     conditions=[Ticket.tenant_id==user.tenant_id]
     if q.strip():
         text=q.strip()
         conditions.append(or_(Ticket.subject.icontains(text,autoescape=True),Ticket.escalation_reason.icontains(text,autoescape=True),Ticket.id.icontains(text,autoescape=True)))
     if status:conditions.append(Ticket.status==status)
+    if source:conditions.append(ticket_source_expression()==source)
     if priority:conditions.append(Ticket.priority==priority)
     if assignment=="mine":conditions.append(Ticket.assigned_agent_id==user.id)
     if assignment=="unassigned":conditions.append(Ticket.assigned_agent_id.is_(None))
@@ -41,30 +43,30 @@ def ticket_conditions(user,q,status,priority,assignment,sla,now):
         conditions.extend([Ticket.status.not_in(list(FINISHED)),or_(*ranges)])
     return conditions
 
-async def queue_result(db,user,q,status,priority,assignment,sla,page,size,export=False):
+async def queue_result(db,user,q,status,priority,assignment,sla,page,size,export=False,source=None):
     now=datetime.now(timezone.utc)
-    conditions=ticket_conditions(user,q,status,priority,assignment,sla,now)
+    conditions=ticket_conditions(user,q,status,priority,assignment,sla,now,source)
     total=await db.scalar(select(func.count()).select_from(Ticket).where(*conditions))
-    stmt=select(Ticket,User.full_name).options(load_only(Ticket.id,Ticket.tenant_id,Ticket.subject,Ticket.status,Ticket.priority,Ticket.escalation_reason,Ticket.created_at,Ticket.updated_at,Ticket.resolved_at,Ticket.assigned_agent_id)).outerjoin(User,and_(User.id==Ticket.assigned_agent_id,User.tenant_id==Ticket.tenant_id)).where(*conditions).order_by(Ticket.created_at.desc(),Ticket.id.desc())
+    stmt=select(Ticket,User.full_name,ticket_source_expression().label("source")).options(load_only(Ticket.id,Ticket.tenant_id,Ticket.subject,Ticket.status,Ticket.priority,Ticket.escalation_reason,Ticket.created_at,Ticket.updated_at,Ticket.resolved_at,Ticket.assigned_agent_id)).outerjoin(User,and_(User.id==Ticket.assigned_agent_id,User.tenant_id==Ticket.tenant_id)).where(*conditions).order_by(Ticket.created_at.desc(),Ticket.id.desc())
     limit=1000 if export else size
     rows=(await db.execute(stmt.offset(0 if export else (page-1)*size).limit(limit))).all()
-    return {"items":[ticket_dict(ticket,name,now,False) for ticket,name in rows],"total":total,"page":page,"page_size":limit,
+    return {"items":[{**ticket_dict(ticket,name,now,False),"source":source_code} for ticket,name,source_code in rows],"total":total,"page":page,"page_size":limit,
             "truncated":bool(export and total>limit),"scope":"current_workspace","as_of":now}
 
 @router.get("/ticket-queue")
 async def queue(q:str=Query(default="",max_length=200),status:TicketStatus|None=None,priority:TicketPriority|None=None,
                 assignment:Literal["all","mine","unassigned"]="all",sla:SlaFilter|None=None,
-                page:int=Query(default=1,ge=1,le=100000),page_size:int=Query(default=20,ge=1,le=100),
+                page:int=Query(default=1,ge=1,le=100000),page_size:int=Query(default=20,ge=1,le=100),source:Literal["manual","ai","legacy"]|None=None,
                 user=Depends(get_current_user),db=Depends(get_db)):
     operator(user)
-    return await queue_result(db,user,q,status,priority,assignment,sla,page,page_size)
+    return await queue_result(db,user,q,status,priority,assignment,sla,page,page_size,source=source)
 
 @router.get("/ticket-queue/export")
 async def export_queue(q:str=Query(default="",max_length=200),status:TicketStatus|None=None,priority:TicketPriority|None=None,
-                assignment:Literal["all","mine","unassigned"]="all",sla:SlaFilter|None=None,
+                assignment:Literal["all","mine","unassigned"]="all",sla:SlaFilter|None=None,source:Literal["manual","ai","legacy"]|None=None,
                 user=Depends(get_current_user),db=Depends(get_db)):
     operator(user)
-    return await queue_result(db,user,q,status,priority,assignment,sla,1,1000,True)
+    return await queue_result(db,user,q,status,priority,assignment,sla,1,1000,True,source)
 
 @router.get("/run-history")
 async def run_history(q:str=Query(default="",max_length=200),status:RunStatus|None=None,category:Category|None=None,

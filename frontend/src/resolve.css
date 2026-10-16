@@ -2897,3 +2897,21 @@ select:focus-visible {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.my-request-filters {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.8rem 0 1rem;
+}
+.my-request-filters label {
+  font-size: 0.78rem;
+  color: var(--text-muted, #64748b);
+}
+.my-request-filters input,
+.my-request-filters select {
+  width: 100%;
+  min-width: 0;
+}
+.my-request-filters small {
+  color: var(--text-muted, #64748b);
+}
