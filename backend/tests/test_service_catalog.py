@@ -96,3 +96,22 @@ def test_catalog_permissions_validation_versions_and_submit_replay():
         ops = client.get(settings.API_V1_STR + f"/helpdesk/tickets/{ticket_id}", headers=owner_headers)
         assert ops.status_code == 200
         assert ops.json()["ticket"]["status"] == "OPEN"
+
+        # Loading old content and explicitly saving must create a new revision,
+        # preserve archival status, and never rewrite an existing ticket snapshot.
+        before_snapshot = ops.json()["ticket"]["request"]["service"]
+        restored = client.put(edit_path, headers=owner_headers, json={**update_body,
+            "expected_version": 3, "status": "archived"})
+        assert restored.status_code == 200 and restored.json()["item"]["version"] == 4
+        assert restored.json()["item"]["status"] == "archived"
+        assert client.get(edit_path + "/revisions", headers=stranger_headers).status_code == 404
+        assert client.get(edit_path + "/revisions", headers=support_headers).status_code == 403
+        history = client.get(edit_path + "/revisions", headers=owner_headers).json()["revisions"]
+        assert [row["version"] for row in history] == [4, 3, 2, 1]
+        assert history[-1]["snapshot"] == revisions[-1]["snapshot"]
+        copied = client.post(admin_path, headers=owner_headers, json={**update_body,
+            "request_id": str(uuid4()), "code": "device-access-copy", "status": "draft"})
+        assert copied.status_code == 201
+        assert copied.json()["item"]["id"] != item["id"] and copied.json()["item"]["version"] == 1
+        assert client.get(catalog_path, headers=support_headers).json()["items"] == []
+        assert client.get(settings.API_V1_STR + f"/helpdesk/tickets/{ticket_id}", headers=owner_headers).json()["ticket"]["request"]["service"] == before_snapshot

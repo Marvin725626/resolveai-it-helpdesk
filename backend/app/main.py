@@ -47,7 +47,7 @@ app = FastAPI(
         "ResolveAI IT HelpDesk demo based on AI SupportPro. "
         "LangGraph diagnosis, hybrid retrieval, evidence, simulated read-only tools, and ticket handoff."
     ),
-    version="2.0.0",
+    version="2.1.0",
     lifespan=lifespan
 )
 
@@ -99,7 +99,7 @@ async def root():
     return {
         "app": settings.APP_NAME,
         "tagline": "IT support with evidence and traceable handoff.",
-        "version": "2.0.0",
+        "version": "2.1.0",
         "docs_url": "/docs",
         "api_prefix": settings.API_V1_STR,
         "status": "operational"

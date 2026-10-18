@@ -211,6 +211,57 @@
 .catalog-history pre {
   font-size: 0.7rem;
 }
+.catalog-revision,
+.catalog-revision-content,
+.catalog-revision-diff {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+.catalog-revision-content {
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  margin: 0;
+  font-size: 0.76rem;
+}
+.catalog-revision-content dt {
+  color: var(--muted);
+  font-weight: 600;
+}
+.catalog-revision-content dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.catalog-revision h4 {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+}
+.catalog-revision ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+.catalog-revision p {
+  margin: 0;
+  font-size: 0.76rem;
+}
+.catalog-unsaved {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.catalog-unsaved span {
+  flex: 1 1 15rem;
+}
+.service-catalog-admin button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+.catalog-field:disabled {
+  opacity: 0.78;
+}
 .catalog-editor input[readonly] {
   background: #f5f7fa;
   color: var(--muted);

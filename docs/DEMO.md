@@ -129,3 +129,7 @@ Docker/PostgreSQL 实测进度见[验证记录](VALIDATION.md)。这些操作是
 6. 管理员归档服务后不再接受新申请，历史工单仍可跟进。
 
 可重复的浏览器验收脚本为 `scripts/smoke-v2-portal.cjs`，仅允许 loopback 开发地址且必须设置 `RESOLVEAI_ALLOW_SYNTHETIC_WRITES=1`。它创建随机工作区和合成账号，不依赖现有演示账号。Playwright 未安装于前端时用 `PLAYWRIGHT_MODULE` 指定模块路径，`CHROMIUM_PATH` 指定 Chromium/Edge 可执行文件。私有 QA 截图仅在 `RESOLVEAI_QA_SCREENSHOTS=1` 时生成到 `.local/`。
+
+## 2.1 目录维护演示
+
+管理员修改已有服务并保存，检查历史立即出现新版本；展开旧版本阅读字段变化，点击「恢复到编辑器」，核对后保存为更高版本。再点击「复制为新草稿」，填写新服务代码后创建；员工目录只展示已发布项。尝试带未保存输入刷新，可选择保留编辑。原申请的快照应始终保持提交时的版本。详见[维护说明](CATALOG_MAINTENANCE.md)。

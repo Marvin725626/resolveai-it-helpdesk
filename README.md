@@ -1,4 +1,4 @@
-# ResolveAI 2.0 · 员工自助与 IT 支持协作
+# ResolveAI 2.1 · 员工自助与 IT 支持协作
 
 基于 [AI SupportPro](https://github.com/theclevertrader/ai-supportpro) 的 IT 支持场景改造，保留原始 MIT 许可证和版权。来源提交与改动范围见 [NOTICE.md](NOTICE.md) 和 [UPSTREAM.json](UPSTREAM.json)，原项目说明见 [README.upstream.md](README.upstream.md)。这是可运行的本地开发 MVP，覆盖证据诊断、人工交接与运营观测。
 
@@ -28,6 +28,10 @@ flowchart LR
     H --> D
     D --> M[运营看板与导出]
 ```
+
+## 2.1：服务目录维护
+
+管理员可以直接编辑和发布服务，阅读历史表单与当前版本的差异，将历史内容载入编辑器另存新版本，也能复制现有服务为独立草稿。切换与刷新会提示未保存的编辑；旧申请快照保持原样。参见[目录维护说明](docs/CATALOG_MAINTENANCE.md)。
 
 ## 2.0：从员工申请到支持处理
 
