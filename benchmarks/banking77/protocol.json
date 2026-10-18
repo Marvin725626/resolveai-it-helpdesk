@@ -1,0 +1,73 @@
+{
+  "study": "Independent English BANKING77 intent classification prototype for financial support triage",
+  "dataset": {
+    "repository": "https://github.com/PolyAI-LDN/task-specific-datasets",
+    "revision": "57ec275d8078af65b7731c2a98be812d844a6d6b",
+    "license": "CC-BY-4.0",
+    "directory": ".local/data",
+    "manifest": "manifest.json",
+    "expected_hashes_from_manifest": true
+  },
+  "split": {
+    "method": "stratified train_test_split on official train.csv",
+    "train_fraction": 0.8,
+    "validation_fraction": 0.2,
+    "random_state": 42
+  },
+  "models": {
+    "word": {
+      "vectorizer": "TfidfVectorizer(analyzer=word, ngram_range=(1,2))",
+      "classifier": "LinearSVC(C=1, dual=auto, random_state=42)"
+    },
+    "char": {
+      "vectorizer": "TfidfVectorizer(analyzer=char_wb, ngram_range=(3,5))",
+      "classifier": "LinearSVC(C=1, dual=auto, random_state=42)"
+    },
+    "word_char": {
+      "vectorizer": "FeatureUnion(word, char_wb) using the specified vectorizers",
+      "classifier": "LinearSVC(C=1, dual=auto, random_state=42)"
+    },
+    "classifier": "LinearSVC(C=1, dual=auto, random_state=42)"
+  },
+  "fit_policy": "Fit each model on the stratified training split only; do not refit on full official training data.",
+  "selective_policy": "Use top-1 minus top-2 decision score margin. For each model select the threshold with maximum validation coverage subject to at least 100 accepted validation examples and accepted validation error rate <= 0.05; ties choose the larger threshold. Freeze before opening official test.csv.",
+  "test_metrics": [
+    "accuracy",
+    "macro_f1",
+    "coverage",
+    "accepted_error",
+    "accepted_correct_fraction_of_all"
+  ],
+  "synthetic_typo": "For each official test text, locate the first word containing at least five ASCII letters and swap its two middle adjacent letters; leave text unchanged if no such word exists. This is deterministic synthetic perturbation, not real user noise.",
+  "paired_bootstrap": {
+    "comparison": "word_char accuracy minus word accuracy",
+    "resamples": 2000,
+    "random_state": 42,
+    "interval": "percentile 95% CI",
+    "sampling": "paired test indices with replacement"
+  },
+  "latency": {
+    "models": [
+      "word",
+      "char",
+      "word_char"
+    ],
+    "samples": 200,
+    "subset": "first 200 official test examples",
+    "measure": "per-example vectorization plus classification wall time after one warmup example",
+    "percentiles": [
+      50,
+      95
+    ],
+    "threadpool_limit": 1
+  },
+  "reporting": "Record environment, training times, data hashes, split-index hash, protocol hash, validation and test metrics. predictions.csv stores row index, gold/predicted labels, margin, and accept flag only; never raw text.",
+  "limitations": [
+    "This is an independent English financial support triage prototype, not a result for an existing ResolveAI system.",
+    "No real LLM/API calls or costs are involved.",
+    "Synthetic typo results do not estimate performance on naturally occurring noisy text."
+  ],
+  "reproducibility": {
+    "LinearSVC_random_state": 42
+  }
+}

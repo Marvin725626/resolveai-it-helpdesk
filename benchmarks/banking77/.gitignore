@@ -1,0 +1,8 @@
+.local/
+__pycache__/
+*.joblib
+*.pkl
+*.model
+results/predictions.csv
+*.tmp
+publication/

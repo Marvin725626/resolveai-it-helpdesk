@@ -1,0 +1,193 @@
+{
+  "word": [
+    {
+      "gold": "why_verify_identity",
+      "predicted": "verify_my_identity",
+      "count": 5
+    },
+    {
+      "gold": "unable_to_verify_identity",
+      "predicted": "verify_my_identity",
+      "count": 5
+    },
+    {
+      "gold": "card_arrival",
+      "predicted": "card_delivery_estimate",
+      "count": 4
+    },
+    {
+      "gold": "fiat_currency_support",
+      "predicted": "exchange_via_app",
+      "count": 4
+    },
+    {
+      "gold": "card_acceptance",
+      "predicted": "card_not_working",
+      "count": 4
+    },
+    {
+      "gold": "top_up_reverted",
+      "predicted": "top_up_failed",
+      "count": 4
+    },
+    {
+      "gold": "disposable_card_limits",
+      "predicted": "get_disposable_virtual_card",
+      "count": 4
+    },
+    {
+      "gold": "wrong_exchange_rate_for_cash_withdrawal",
+      "predicted": "card_payment_wrong_exchange_rate",
+      "count": 4
+    },
+    {
+      "gold": "top_up_failed",
+      "predicted": "top_up_reverted",
+      "count": 4
+    },
+    {
+      "gold": "verify_my_identity",
+      "predicted": "unable_to_verify_identity",
+      "count": 4
+    },
+    {
+      "gold": "card_payment_wrong_exchange_rate",
+      "predicted": "wrong_exchange_rate_for_cash_withdrawal",
+      "count": 3
+    },
+    {
+      "gold": "fiat_currency_support",
+      "predicted": "supported_cards_and_currencies",
+      "count": 3
+    }
+  ],
+  "char": [
+    {
+      "gold": "virtual_card_not_working",
+      "predicted": "get_disposable_virtual_card",
+      "count": 8
+    },
+    {
+      "gold": "why_verify_identity",
+      "predicted": "verify_my_identity",
+      "count": 7
+    },
+    {
+      "gold": "why_verify_identity",
+      "predicted": "unable_to_verify_identity",
+      "count": 5
+    },
+    {
+      "gold": "top_up_failed",
+      "predicted": "top_up_reverted",
+      "count": 5
+    },
+    {
+      "gold": "change_pin",
+      "predicted": "get_physical_card",
+      "count": 4
+    },
+    {
+      "gold": "balance_not_updated_after_bank_transfer",
+      "predicted": "pending_transfer",
+      "count": 4
+    },
+    {
+      "gold": "card_arrival",
+      "predicted": "card_delivery_estimate",
+      "count": 3
+    },
+    {
+      "gold": "card_payment_wrong_exchange_rate",
+      "predicted": "wrong_exchange_rate_for_cash_withdrawal",
+      "count": 3
+    },
+    {
+      "gold": "fiat_currency_support",
+      "predicted": "exchange_via_app",
+      "count": 3
+    },
+    {
+      "gold": "pin_blocked",
+      "predicted": "get_physical_card",
+      "count": 3
+    },
+    {
+      "gold": "pending_top_up",
+      "predicted": "top_up_failed",
+      "count": 3
+    },
+    {
+      "gold": "top_up_reverted",
+      "predicted": "top_up_failed",
+      "count": 3
+    }
+  ],
+  "word_char": [
+    {
+      "gold": "top_up_failed",
+      "predicted": "top_up_reverted",
+      "count": 5
+    },
+    {
+      "gold": "fiat_currency_support",
+      "predicted": "exchange_via_app",
+      "count": 4
+    },
+    {
+      "gold": "card_acceptance",
+      "predicted": "card_not_working",
+      "count": 4
+    },
+    {
+      "gold": "why_verify_identity",
+      "predicted": "unable_to_verify_identity",
+      "count": 4
+    },
+    {
+      "gold": "change_pin",
+      "predicted": "get_physical_card",
+      "count": 4
+    },
+    {
+      "gold": "balance_not_updated_after_bank_transfer",
+      "predicted": "transfer_not_received_by_recipient",
+      "count": 4
+    },
+    {
+      "gold": "card_arrival",
+      "predicted": "card_delivery_estimate",
+      "count": 3
+    },
+    {
+      "gold": "card_payment_wrong_exchange_rate",
+      "predicted": "wrong_exchange_rate_for_cash_withdrawal",
+      "count": 3
+    },
+    {
+      "gold": "pin_blocked",
+      "predicted": "card_not_working",
+      "count": 3
+    },
+    {
+      "gold": "top_up_reverted",
+      "predicted": "top_up_failed",
+      "count": 3
+    },
+    {
+      "gold": "unable_to_verify_identity",
+      "predicted": "verify_my_identity",
+      "count": 3
+    },
+    {
+      "gold": "disposable_card_limits",
+      "predicted": "getting_virtual_card",
+      "count": 3
+    }
+  ],
+  "paired_outcomes": {
+    "corrected": 95,
+    "regressed": 19,
+    "net_corrected": 76
+  }
+}
